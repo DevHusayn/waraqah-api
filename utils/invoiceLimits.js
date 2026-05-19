@@ -1,5 +1,6 @@
 import Invoice from '../models/Invoice.js';
 import BusinessInfo from '../models/CompanyInfo.js';
+import MonthlyInvoiceUsage from '../models/MonthlyInvoiceUsage.js';
 import { isPremiumActive } from './businessInfoHelpers.js';
 
 export const FREE_MONTHLY_INVOICE_LIMIT = 5;
@@ -8,7 +9,8 @@ export function getCurrentMonthRange() {
     const now = new Date();
     const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
     const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-    return { start, end };
+    const periodKey = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+    return { start, end, periodKey };
 }
 
 export async function countInvoicesInCurrentMonth(userId) {
@@ -20,7 +22,7 @@ export async function countInvoicesInCurrentMonth(userId) {
 }
 
 export async function getInvoiceUsageForUser(userId) {
-    const { start, end } = getCurrentMonthRange();
+    const { start, end, periodKey } = getCurrentMonthRange();
     const info = await BusinessInfo.findOne({ userId });
 
     if (isPremiumActive(info)) {
@@ -35,7 +37,13 @@ export async function getInvoiceUsageForUser(userId) {
         };
     }
 
-    const used = await countInvoicesInCurrentMonth(userId);
+    const [usageDoc, currentInvoiceCount] = await Promise.all([
+        MonthlyInvoiceUsage.findOne({ userId, periodKey }),
+        countInvoicesInCurrentMonth(userId),
+    ]);
+    // Seed from current invoices so users do not get extra slots after deployment.
+    // Once the ledger is ahead, deleted invoices still count for the month.
+    const used = Math.max(usageDoc?.count || 0, currentInvoiceCount);
     const limit = FREE_MONTHLY_INVOICE_LIMIT;
     const remaining = Math.max(0, limit - used);
 
@@ -50,8 +58,10 @@ export async function getInvoiceUsageForUser(userId) {
     };
 }
 
-export async function assertCanCreateInvoice(userId) {
+export async function reserveInvoiceCreation(userId) {
     const usage = await getInvoiceUsageForUser(userId);
+    if (usage.unlimited) return usage;
+
     if (!usage.canCreate) {
         const err = new Error(
             `Free plan limit reached: ${usage.limit} invoices per month. Upgrade to Premium for unlimited invoices.`
@@ -61,5 +71,29 @@ export async function assertCanCreateInvoice(userId) {
         err.usage = usage;
         throw err;
     }
-    return usage;
+
+    const { periodKey } = getCurrentMonthRange();
+    await MonthlyInvoiceUsage.updateOne(
+        { userId, periodKey },
+        { $setOnInsert: { userId, periodKey, count: 0 } },
+        { upsert: true, setDefaultsOnInsert: true }
+    );
+    await MonthlyInvoiceUsage.updateOne(
+        { userId, periodKey },
+        { $max: { count: usage.used } }
+    );
+    await MonthlyInvoiceUsage.updateOne(
+        { userId, periodKey },
+        { $inc: { count: 1 } }
+    );
+
+    return getInvoiceUsageForUser(userId);
+}
+
+export async function releaseInvoiceCreation(userId) {
+    const { periodKey } = getCurrentMonthRange();
+    await MonthlyInvoiceUsage.updateOne(
+        { userId, periodKey, count: { $gt: 0 } },
+        { $inc: { count: -1 } }
+    );
 }

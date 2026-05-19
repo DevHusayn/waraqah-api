@@ -1,7 +1,11 @@
 import express from 'express';
 import Invoice from '../models/Invoice.js';
 import auth from '../middleware/auth.js';
-import { getInvoiceUsageForUser, assertCanCreateInvoice } from '../utils/invoiceLimits.js';
+import {
+    getInvoiceUsageForUser,
+    reserveInvoiceCreation,
+    releaseInvoiceCreation,
+} from '../utils/invoiceLimits.js';
 
 const router = express.Router();
 
@@ -23,8 +27,12 @@ router.get('/', auth, async (req, res) => {
 
 // Create invoice
 router.post('/', auth, async (req, res) => {
+    let reserved = false;
     try {
-        await assertCanCreateInvoice(req.user.userId);
+        await reserveInvoiceCreation(req.user.userId);
+        reserved = true;
+        const invoice = await Invoice.create({ ...req.body, userId: req.user.userId });
+        res.status(201).json(invoice);
     } catch (err) {
         if (err.code === 'INVOICE_LIMIT_REACHED') {
             return res.status(403).json({
@@ -33,10 +41,11 @@ router.post('/', auth, async (req, res) => {
                 usage: err.usage,
             });
         }
-        throw err;
+        if (reserved) {
+            await releaseInvoiceCreation(req.user.userId);
+        }
+        res.status(500).json({ message: err.message || 'Could not create invoice' });
     }
-    const invoice = await Invoice.create({ ...req.body, userId: req.user.userId });
-    res.status(201).json(invoice);
 });
 
 // Update invoice

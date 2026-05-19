@@ -1,7 +1,7 @@
 // In-app recurring invoice automation using node-cron
 import cron from 'node-cron';
 import Invoice from './models/Invoice.js';
-import { getInvoiceUsageForUser } from './utils/invoiceLimits.js';
+import { reserveInvoiceCreation, releaseInvoiceCreation } from './utils/invoiceLimits.js';
 
 // This function is adapted from generateRecurringInvoices.js
 async function generateRecurringInvoices() {
@@ -32,8 +32,12 @@ async function generateRecurringInvoices() {
         }
         nextDate.setDate(nextDate.getDate() + increment);
         if (now >= nextDate && new Date(template.recurringEndDate) >= nextDate) {
-            const usage = await getInvoiceUsageForUser(template.userId);
-            if (!usage.canCreate) continue;
+            try {
+                await reserveInvoiceCreation(template.userId);
+            } catch (err) {
+                if (err.code === 'INVOICE_LIMIT_REACHED') continue;
+                throw err;
+            }
 
             const newInvoice = new Invoice({
                 ...template.toObject(),
@@ -43,7 +47,12 @@ async function generateRecurringInvoices() {
                 createdAt: new Date(),
                 invoiceNumber: `${template.invoiceNumber}-${nextDate.toISOString().slice(0, 10)}`,
             });
-            await newInvoice.save();
+            try {
+                await newInvoice.save();
+            } catch (err) {
+                await releaseInvoiceCreation(template.userId);
+                throw err;
+            }
         }
     }
 }
