@@ -243,7 +243,14 @@ router.patch('/admin/users/:id/plan', auth, async (req, res) => {
         }
         let info = await BusinessInfo.findOne({ userId: req.params.id });
         if (!info) {
-            info = await BusinessInfo.create({ userId: req.params.id, ...defaultBusinessInfoFields, plan });
+            info = await BusinessInfo.create({
+                userId: req.params.id,
+                ...defaultBusinessInfoFields,
+                plan,
+                premiumUntil: plan === PLANS.PREMIUM
+                    ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+                    : null,
+            });
         } else {
             info.plan = plan;
             if (plan === PLANS.PREMIUM) {
