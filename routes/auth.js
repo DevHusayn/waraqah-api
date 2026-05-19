@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import BusinessInfo from '../models/CompanyInfo.js';
 import auth from '../middleware/auth.js';
+import { defaultBusinessInfoFields, PLANS, toBusinessInfoResponse } from '../utils/businessInfoHelpers.js';
 import Invoice from '../models/Invoice.js';
 import Client from '../models/Client.js';
 const router = express.Router();
@@ -103,20 +104,25 @@ router.post('/register', async (req, res) => {
         const hash = await bcrypt.hash(password, 10);
         const user = await User.create({ email, password: hash, name });
         // Save business info if provided (ensure all fields are present)
-        if (businessInfo) {
-            await BusinessInfo.create({
-                userId: user._id,
+        await BusinessInfo.create({
+            userId: user._id,
+            ...defaultBusinessInfoFields,
+            ...(businessInfo ? {
                 name: businessInfo.name || '',
                 address: businessInfo.address || '',
                 email: businessInfo.email || '',
                 phone: businessInfo.phone || '',
                 website: businessInfo.website || '',
-                defaultCurrency: businessInfo.defaultCurrency || 'USD',
-                taxRate: businessInfo.taxRate || 10,
-                brandColor: businessInfo.brandColor || '#0ea5e9',
-            });
-        }
-        res.status(201).json({ message: 'User registered', user: { id: user._id, email: user.email, name: user.name, isAdmin: user.isAdmin } });
+                brandColor: businessInfo.brandColor || defaultBusinessInfoFields.brandColor,
+                taxRate: businessInfo.taxRate ?? defaultBusinessInfoFields.taxRate,
+            } : {}),
+        });
+        const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+        res.status(201).json({
+            message: 'User registered',
+            token,
+            user: { id: user._id, email: user.email, name: user.name, isAdmin: user.isAdmin, status: user.status },
+        });
     } catch (err) {
         res.status(500).json({ message: 'Server error', error: err.message });
     }
@@ -133,6 +139,10 @@ router.post('/login', async (req, res) => {
         const { email, password } = req.body;
         const user = await User.findOne({ email });
         if (!user) return res.status(401).json({ message: 'Invalid credentials' });
+
+        if (user.status === 'suspended') {
+            return res.status(403).json({ message: 'Account suspended. Contact support.' });
+        }
 
         // Check lockout
         if (user.lockUntil && user.lockUntil > Date.now()) {
@@ -215,6 +225,36 @@ router.post('/reset-password/:token', async (req, res) => {
         user.lockUntil = undefined;
         await user.save();
         res.json({ message: 'Password reset successful. You can now log in.' });
+    } catch (err) {
+        res.status(500).json({ message: 'Server error', error: err.message });
+    }
+});
+
+// Admin: set user plan (free | premium)
+router.patch('/admin/users/:id/plan', auth, async (req, res) => {
+    try {
+        const adminUser = await User.findById(req.user.userId);
+        if (!adminUser || !adminUser.isAdmin) {
+            return res.status(403).json({ message: 'Forbidden: Admins only' });
+        }
+        const { plan } = req.body;
+        if (![PLANS.FREE, PLANS.PREMIUM].includes(plan)) {
+            return res.status(400).json({ message: 'Plan must be "free" or "premium"' });
+        }
+        let info = await BusinessInfo.findOne({ userId: req.params.id });
+        if (!info) {
+            info = await BusinessInfo.create({ userId: req.params.id, ...defaultBusinessInfoFields, plan });
+        } else {
+            info.plan = plan;
+            if (plan === PLANS.PREMIUM) {
+                info.premiumUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+            } else {
+                info.premiumUntil = null;
+                info.businessLogo = '';
+            }
+            await info.save();
+        }
+        res.json({ message: 'Plan updated', businessInfo: toBusinessInfoResponse(info) });
     } catch (err) {
         res.status(500).json({ message: 'Server error', error: err.message });
     }

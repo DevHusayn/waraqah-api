@@ -1,8 +1,19 @@
 import express from 'express';
 import Invoice from '../models/Invoice.js';
 import auth from '../middleware/auth.js';
+import { getInvoiceUsageForUser, assertCanCreateInvoice } from '../utils/invoiceLimits.js';
 
 const router = express.Router();
+
+// Monthly invoice quota (free plan)
+router.get('/usage', auth, async (req, res) => {
+    try {
+        const usage = await getInvoiceUsageForUser(req.user.userId);
+        res.json(usage);
+    } catch (err) {
+        res.status(500).json({ message: err.message || 'Could not load invoice usage' });
+    }
+});
 
 // Get all invoices for user
 router.get('/', auth, async (req, res) => {
@@ -12,6 +23,18 @@ router.get('/', auth, async (req, res) => {
 
 // Create invoice
 router.post('/', auth, async (req, res) => {
+    try {
+        await assertCanCreateInvoice(req.user.userId);
+    } catch (err) {
+        if (err.code === 'INVOICE_LIMIT_REACHED') {
+            return res.status(403).json({
+                message: err.message,
+                code: err.code,
+                usage: err.usage,
+            });
+        }
+        throw err;
+    }
     const invoice = await Invoice.create({ ...req.body, userId: req.user.userId });
     res.status(201).json(invoice);
 });
