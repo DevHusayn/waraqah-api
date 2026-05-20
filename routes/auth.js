@@ -8,7 +8,24 @@ import auth from '../middleware/auth.js';
 import { defaultBusinessInfoFields, PLANS, toBusinessInfoResponse } from '../utils/businessInfoHelpers.js';
 import Invoice from '../models/Invoice.js';
 import Client from '../models/Client.js';
+import { sendPasswordResetEmail } from '../utils/email.js';
+import { isStrongPassword, PASSWORD_REQUIREMENTS_MESSAGE } from '../utils/passwordValidation.js';
+import { createPasswordResetToken, hashPasswordResetToken } from '../utils/resetToken.js';
+
 const router = express.Router();
+
+const FORGOT_PASSWORD_RESPONSE = {
+    message: 'If an account exists for that email, we sent a link to reset your password.',
+};
+
+function normalizeEmail(email) {
+    return String(email || '').trim().toLowerCase();
+}
+
+function getFrontendBaseUrl() {
+    const url = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+    return url;
+}
 
 // Admin: Suspend/Activate user
 router.patch('/admin/users/:id/status', auth, async (req, res) => {
@@ -177,37 +194,43 @@ router.post('/login', async (req, res) => {
 });
 
 // Password reset request (send token)
-import crypto from 'crypto';
-import nodemailer from 'nodemailer';
 router.post('/forgot-password', async (req, res) => {
     try {
-        const { email } = req.body;
+        const email = normalizeEmail(req.body.email);
+        if (!email) {
+            return res.status(400).json({ message: 'Email is required.' });
+        }
+
         const user = await User.findOne({ email });
-        if (!user) return res.status(200).json({ message: 'If the email exists, a reset link will be sent.' });
-        const token = crypto.randomBytes(32).toString('hex');
-        user.passwordResetToken = token;
-        user.passwordResetExpires = Date.now() + 60 * 60 * 1000; // 1 hour
+        if (!user) {
+            return res.status(200).json(FORGOT_PASSWORD_RESPONSE);
+        }
+
+        const token = createPasswordResetToken();
+        user.passwordResetToken = hashPasswordResetToken(token);
+        user.passwordResetExpires = Date.now() + 60 * 60 * 1000;
         await user.save();
-        // Send email (configure your SMTP)
-        const transporter = nodemailer.createTransport({
-            host: 'smtp.gmail.com',
-            port: 587,
-            secure: false, // use TLS
-            auth: {
-                user: process.env.SMTP_USER,
-                pass: process.env.SMTP_PASS,
-            },
-        });
-        const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password/${token}`;
-        await transporter.sendMail({
-            to: user.email,
-            subject: 'Password Reset',
-            html: `<p>Click <a href="${resetUrl}">here</a> to reset your password. This link expires in 1 hour.</p>`
-        });
-        res.json({ message: 'If the email exists, a reset link will be sent.' });
+
+        const resetUrl = `${getFrontendBaseUrl()}/reset-password/${token}`;
+
+        try {
+            await sendPasswordResetEmail({ to: user.email, resetUrl });
+        } catch (mailErr) {
+            console.error('Forgot-password email error:', mailErr);
+            if (mailErr.code === 'EMAIL_NOT_CONFIGURED') {
+                return res.status(503).json({
+                    message: 'Password reset email is not available right now. Please contact support.',
+                });
+            }
+            return res.status(503).json({
+                message: 'We could not send the reset email. Please try again in a few minutes.',
+            });
+        }
+
+        res.status(200).json(FORGOT_PASSWORD_RESPONSE);
     } catch (err) {
         console.error('Forgot-password error:', err);
-        res.status(500).json({ message: 'Server error', error: err.message });
+        res.status(500).json({ message: 'Something went wrong. Please try again.' });
     }
 });
 
@@ -215,18 +238,36 @@ router.post('/forgot-password', async (req, res) => {
 router.post('/reset-password/:token', async (req, res) => {
     try {
         const { password } = req.body;
-        const user = await User.findOne({ passwordResetToken: req.params.token, passwordResetExpires: { $gt: Date.now() } });
-        if (!user) return res.status(400).json({ message: 'Invalid or expired token' });
-        const hash = await bcrypt.hash(password, 10);
-        user.password = hash;
+        if (!password) {
+            return res.status(400).json({ message: 'Password is required.' });
+        }
+        if (!isStrongPassword(password)) {
+            return res.status(400).json({ message: PASSWORD_REQUIREMENTS_MESSAGE });
+        }
+
+        const tokenHash = hashPasswordResetToken(req.params.token);
+        const user = await User.findOne({
+            passwordResetToken: tokenHash,
+            passwordResetExpires: { $gt: Date.now() },
+        });
+
+        if (!user) {
+            return res.status(400).json({
+                message: 'This reset link is invalid or has expired. Request a new one from the sign-in page.',
+            });
+        }
+
+        user.password = await bcrypt.hash(password, 10);
         user.passwordResetToken = undefined;
         user.passwordResetExpires = undefined;
         user.failedLoginAttempts = 0;
         user.lockUntil = undefined;
         await user.save();
-        res.json({ message: 'Password reset successful. You can now log in.' });
+
+        res.json({ message: 'Your password has been updated. You can sign in now.' });
     } catch (err) {
-        res.status(500).json({ message: 'Server error', error: err.message });
+        console.error('Reset-password error:', err);
+        res.status(500).json({ message: 'Something went wrong. Please try again.' });
     }
 });
 
