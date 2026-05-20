@@ -6,6 +6,7 @@ import {
     reserveInvoiceCreation,
     releaseInvoiceCreation,
 } from '../utils/invoiceLimits.js';
+import { getNextInvoiceNumber } from '../utils/invoiceNumber.js';
 
 const router = express.Router();
 
@@ -25,13 +26,28 @@ router.get('/', auth, async (req, res) => {
     res.json(invoices);
 });
 
+// Next sequential invoice number for this user (INV-0001, …)
+router.get('/next-number', auth, async (req, res) => {
+    try {
+        const invoiceNumber = await getNextInvoiceNumber(req.user.userId);
+        res.json({ invoiceNumber });
+    } catch (err) {
+        res.status(500).json({ message: err.message || 'Could not generate invoice number' });
+    }
+});
+
 // Create invoice
 router.post('/', auth, async (req, res) => {
     let reserved = false;
     try {
         await reserveInvoiceCreation(req.user.userId);
         reserved = true;
-        const invoice = await Invoice.create({ ...req.body, userId: req.user.userId });
+        const invoiceNumber = await getNextInvoiceNumber(req.user.userId);
+        const invoice = await Invoice.create({
+            ...req.body,
+            invoiceNumber,
+            userId: req.user.userId,
+        });
         res.status(201).json(invoice);
     } catch (err) {
         if (err.code === 'INVOICE_LIMIT_REACHED') {
