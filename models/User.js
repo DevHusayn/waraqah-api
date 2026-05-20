@@ -14,6 +14,7 @@ const userSchema = new mongoose.Schema({
     lockUntil: { type: Date },
     passwordResetToken: { type: String },
     passwordResetExpires: { type: Date },
+    passwordResetRequestedAt: { type: Date },
 }, { timestamps: true });
 
 export default mongoose.model('User', userSchema);

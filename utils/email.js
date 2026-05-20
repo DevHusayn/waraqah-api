@@ -2,22 +2,79 @@ import nodemailer from 'nodemailer';
 
 const APP_NAME = 'Waraqah';
 
-export function isEmailConfigured() {
-    return Boolean(process.env.SMTP_USER && process.env.SMTP_PASS);
+let cachedTransporter = null;
+
+function getSmtpCredentials() {
+    const user = process.env.SMTP_USER?.trim();
+    const pass = process.env.SMTP_PASS?.trim();
+    return { user, pass };
 }
 
-function createTransporter() {
-    if (!isEmailConfigured()) return null;
+export function isEmailConfigured() {
+    const { user, pass } = getSmtpCredentials();
+    return Boolean(user && pass);
+}
 
-    return nodemailer.createTransport({
-        host: process.env.SMTP_HOST || 'smtp.gmail.com',
+function getTransporter() {
+    if (!isEmailConfigured()) return null;
+    if (cachedTransporter) return cachedTransporter;
+
+    const { user, pass } = getSmtpCredentials();
+
+    cachedTransporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST?.trim() || 'smtp.gmail.com',
         port: Number(process.env.SMTP_PORT) || 587,
         secure: process.env.SMTP_SECURE === 'true',
-        auth: {
-            user: process.env.SMTP_USER,
-            pass: process.env.SMTP_PASS,
-        },
+        auth: { user, pass },
+        pool: true,
+        maxConnections: 1,
+        maxMessages: 3,
+        rateDelta: 1000,
+        rateLimit: 1,
     });
+
+    return cachedTransporter;
+}
+
+/** Map nodemailer / Gmail errors to safe user-facing messages */
+export function getEmailErrorMessage(err) {
+    const code = err?.code || '';
+    const response = String(err?.response || err?.message || '').toLowerCase();
+
+    if (code === 'EMAIL_NOT_CONFIGURED') {
+        return 'Password reset email is not available right now. Please contact support.';
+    }
+
+    if (
+        code === 'EAUTH' ||
+        response.includes('username and password not accepted') ||
+        response.includes('invalid login')
+    ) {
+        if (process.env.NODE_ENV !== 'production') {
+            return 'Gmail rejected the login. Use a 16-character App Password in SMTP_PASS, not your normal Gmail password.';
+        }
+        return 'We could not send the reset email right now. Please try again later or contact support.';
+    }
+
+    if (
+        code === 'EENVELOPE' ||
+        response.includes('daily sending quota') ||
+        response.includes('quota exceeded')
+    ) {
+        return 'Email sending limit reached. Please try again tomorrow or contact support.';
+    }
+
+    if (
+        response.includes('454') ||
+        response.includes('421') ||
+        response.includes('too many') ||
+        response.includes('rate limit') ||
+        response.includes('try again later')
+    ) {
+        return 'Please wait a few minutes before requesting another reset email.';
+    }
+
+    return 'We could not send the reset email. Please try again in a few minutes.';
 }
 
 function buildResetEmailHtml(resetUrl) {
@@ -56,10 +113,9 @@ function buildResetEmailHtml(resetUrl) {
 
 /**
  * Sends password reset email. In development without SMTP, logs the link to the console.
- * @returns {{ sent: boolean }}
  */
 export async function sendPasswordResetEmail({ to, resetUrl }) {
-    const from = process.env.SMTP_FROM || process.env.SMTP_USER;
+    const from = process.env.SMTP_FROM?.trim() || getSmtpCredentials().user;
     const subject = `Reset your ${APP_NAME} password`;
     const html = buildResetEmailHtml(resetUrl);
     const text = `Reset your ${APP_NAME} password:\n\n${resetUrl}\n\nThis link expires in 1 hour. If you did not request this, ignore this email.`;
@@ -74,14 +130,24 @@ export async function sendPasswordResetEmail({ to, resetUrl }) {
         return { sent: false };
     }
 
-    const transporter = createTransporter();
-    await transporter.sendMail({
-        from: from ? `"${APP_NAME}" <${from}>` : APP_NAME,
-        to,
-        subject,
-        html,
-        text,
-    });
+    const transporter = getTransporter();
+
+    try {
+        await transporter.sendMail({
+            from: from ? `"${APP_NAME}" <${from}>` : APP_NAME,
+            to,
+            subject,
+            html,
+            text,
+        });
+    } catch (err) {
+        console.error(`[${APP_NAME}] SMTP send failed:`, {
+            code: err.code,
+            response: err.response,
+            message: err.message,
+        });
+        throw err;
+    }
 
     return { sent: true };
 }

@@ -8,7 +8,7 @@ import auth from '../middleware/auth.js';
 import { defaultBusinessInfoFields, PLANS, toBusinessInfoResponse } from '../utils/businessInfoHelpers.js';
 import Invoice from '../models/Invoice.js';
 import Client from '../models/Client.js';
-import { sendPasswordResetEmail } from '../utils/email.js';
+import { sendPasswordResetEmail, getEmailErrorMessage } from '../utils/email.js';
 import { isStrongPassword, PASSWORD_REQUIREMENTS_MESSAGE } from '../utils/passwordValidation.js';
 import { createPasswordResetToken, hashPasswordResetToken } from '../utils/resetToken.js';
 
@@ -17,6 +17,9 @@ const router = express.Router();
 const FORGOT_PASSWORD_RESPONSE = {
     message: 'If an account exists for that email, we sent a link to reset your password.',
 };
+
+/** Minimum time between reset emails to the same account (Gmail rate limits) */
+const RESET_EMAIL_COOLDOWN_MS = 2 * 60 * 1000;
 
 function normalizeEmail(email) {
     return String(email || '').trim().toLowerCase();
@@ -206,26 +209,30 @@ router.post('/forgot-password', async (req, res) => {
             return res.status(200).json(FORGOT_PASSWORD_RESPONSE);
         }
 
-        const token = createPasswordResetToken();
-        user.passwordResetToken = hashPasswordResetToken(token);
-        user.passwordResetExpires = Date.now() + 60 * 60 * 1000;
-        await user.save();
+        const lastSent = user.passwordResetRequestedAt?.getTime() || 0;
+        const cooldownLeft = RESET_EMAIL_COOLDOWN_MS - (Date.now() - lastSent);
+        if (cooldownLeft > 0 && user.passwordResetExpires?.getTime() > Date.now()) {
+            return res.status(429).json({
+                message: 'Please wait a few minutes before requesting another reset email. Check your inbox for the link we already sent.',
+            });
+        }
 
+        const token = createPasswordResetToken();
         const resetUrl = `${getFrontendBaseUrl()}/reset-password/${token}`;
 
         try {
             await sendPasswordResetEmail({ to: user.email, resetUrl });
         } catch (mailErr) {
             console.error('Forgot-password email error:', mailErr);
-            if (mailErr.code === 'EMAIL_NOT_CONFIGURED') {
-                return res.status(503).json({
-                    message: 'Password reset email is not available right now. Please contact support.',
-                });
-            }
             return res.status(503).json({
-                message: 'We could not send the reset email. Please try again in a few minutes.',
+                message: getEmailErrorMessage(mailErr),
             });
         }
+
+        user.passwordResetToken = hashPasswordResetToken(token);
+        user.passwordResetExpires = Date.now() + 60 * 60 * 1000;
+        user.passwordResetRequestedAt = new Date();
+        await user.save();
 
         res.status(200).json(FORGOT_PASSWORD_RESPONSE);
     } catch (err) {
