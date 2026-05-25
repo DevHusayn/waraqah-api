@@ -4,6 +4,7 @@ const invoiceSchema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true },
     invoiceNumber: String,
+    receiptNumber: String,
     date: String,
     dueDate: String,
     items: [
@@ -14,7 +15,14 @@ const invoiceSchema = new mongoose.Schema({
         }
     ],
     notes: String,
-    status: String,
+    status: { type: String, default: 'pending' },
+    paymentMethod: {
+        type: String,
+        enum: ['cash', 'bank_transfer', 'pos', 'card', 'online_gateway'],
+        required: false,
+        default: undefined,
+    },
+    datePaid: { type: String, default: null },
     currency: String,
     taxRate: Number,
     subtotal: Number,

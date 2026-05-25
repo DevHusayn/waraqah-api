@@ -8,6 +8,10 @@ import auth from '../middleware/auth.js';
 import { defaultBusinessInfoFields, PLANS, toBusinessInfoResponse } from '../utils/businessInfoHelpers.js';
 import Invoice from '../models/Invoice.js';
 import Client from '../models/Client.js';
+import {
+    getInvoiceUsageForUser,
+    resetFreeInvoiceUsageForUser,
+} from '../utils/invoiceLimits.js';
 import { sendPasswordResetEmail, getEmailErrorMessage } from '../utils/email.js';
 import { isStrongPassword, PASSWORD_REQUIREMENTS_MESSAGE } from '../utils/passwordValidation.js';
 import { createPasswordResetToken, hashPasswordResetToken } from '../utils/resetToken.js';
@@ -97,17 +101,24 @@ router.get('/admin/users', auth, async (req, res) => {
             { $group: { _id: '$userId', count: { $sum: 1 } } }
         ]);
 
-        const usersWithDetails = users.map(user => {
-            const businessInfo = businessInfos.find(bi => bi.userId.toString() === user._id.toString()) || null;
-            const invoiceCount = invoiceCounts.find(ic => ic._id.toString() === user._id.toString())?.count || 0;
-            const clientCount = clientCounts.find(cc => cc._id.toString() === user._id.toString())?.count || 0;
-            return {
-                ...user.toObject(),
-                businessInfo,
-                invoiceCount,
-                clientCount,
-            };
-        });
+        const usersWithDetails = await Promise.all(
+            users.map(async (user) => {
+                const businessInfo =
+                    businessInfos.find((bi) => bi.userId.toString() === user._id.toString()) || null;
+                const invoiceCount =
+                    invoiceCounts.find((ic) => ic._id.toString() === user._id.toString())?.count || 0;
+                const clientCount =
+                    clientCounts.find((cc) => cc._id.toString() === user._id.toString())?.count || 0;
+                const invoiceUsage = await getInvoiceUsageForUser(user._id);
+                return {
+                    ...user.toObject(),
+                    businessInfo,
+                    invoiceCount,
+                    clientCount,
+                    invoiceUsage,
+                };
+            })
+        );
         res.json(usersWithDetails);
     } catch (err) {
         res.status(500).json({ message: 'Server error', error: err.message });
@@ -327,6 +338,29 @@ router.patch('/admin/users/:id/unlock', auth, async (req, res) => {
         await user.save();
         res.json({ message: 'User account unlocked.' });
     } catch (err) {
+        res.status(500).json({ message: 'Server error', error: err.message });
+    }
+});
+
+// Admin: reset free-plan monthly invoice quota (5 invoices)
+router.patch('/admin/users/:id/invoice-usage/reset', auth, async (req, res) => {
+    try {
+        const adminUser = await User.findById(req.user.userId);
+        if (!adminUser || !adminUser.isAdmin) {
+            return res.status(403).json({ message: 'Forbidden: Admins only' });
+        }
+        const user = await User.findById(req.params.id);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        const usage = await resetFreeInvoiceUsageForUser(req.params.id);
+        res.json({
+            message: 'Free invoice quota reset for this month.',
+            invoiceUsage: usage,
+        });
+    } catch (err) {
+        if (err.status === 400) {
+            return res.status(400).json({ message: err.message });
+        }
         res.status(500).json({ message: 'Server error', error: err.message });
     }
 });

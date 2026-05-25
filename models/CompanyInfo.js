@@ -20,7 +20,13 @@ const businessInfoSchema = new mongoose.Schema({
     paystackSubscriptionCode: { type: String, default: '' },
     paystackCustomerCode: { type: String, default: '' },
     paystackEmailToken: { type: String, default: '' },
+    /** @deprecated use companyLogoUrl — kept for existing records */
     businessLogo: { type: String, default: '' },
+    companyLogoUrl: { type: String, default: '' },
+    /** JPEG data URL for sidebar / in-app avatar display */
+    companyLogoAvatarUrl: { type: String, default: '' },
+    companyStampUrl: { type: String, default: '' },
+    authorizedSignatureUrl: { type: String, default: '' },
 }, { timestamps: true });
 
 export default mongoose.model('BusinessInfo', businessInfoSchema);

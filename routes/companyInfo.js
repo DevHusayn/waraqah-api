@@ -43,6 +43,9 @@ router.put('/', auth, async (req, res) => {
             } else {
                 updates.premiumUntil = null;
                 updates.businessLogo = '';
+                updates.companyLogoUrl = '';
+                updates.companyStampUrl = '';
+                updates.authorizedSignatureUrl = '';
             }
         }
         applyPremiumLogoRules(updates, existing);
@@ -54,6 +57,9 @@ router.put('/', auth, async (req, res) => {
         );
         res.json(toBusinessInfoResponse(info));
     } catch (err) {
+        if (err.status === 400) {
+            return res.status(400).json({ message: err.message });
+        }
         res.status(500).json({ message: 'Server error', error: err.message });
     }
 });

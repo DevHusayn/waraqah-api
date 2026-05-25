@@ -1,6 +1,6 @@
 const PAYSTACK_BASE = 'https://api.paystack.co';
 
-export const PREMIUM_AMOUNT_NGN = 5000;
+export const PREMIUM_AMOUNT_NGN = 2000;
 export const PREMIUM_AMOUNT_KOBO = PREMIUM_AMOUNT_NGN * 100;
 
 function getSecretKey() {

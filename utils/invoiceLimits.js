@@ -13,11 +13,13 @@ export function getCurrentMonthRange() {
     return { start, end, periodKey };
 }
 
-export async function countInvoicesInCurrentMonth(userId) {
+export async function countInvoicesInCurrentMonth(userId, resetAfter = null) {
     const { start, end } = getCurrentMonthRange();
+    const countStart =
+        resetAfter instanceof Date && resetAfter > start ? resetAfter : start;
     return Invoice.countDocuments({
         userId,
-        createdAt: { $gte: start, $lt: end },
+        createdAt: { $gte: countStart, $lt: end },
     });
 }
 
@@ -37,10 +39,11 @@ export async function getInvoiceUsageForUser(userId) {
         };
     }
 
-    const [usageDoc, currentInvoiceCount] = await Promise.all([
-        MonthlyInvoiceUsage.findOne({ userId, periodKey }),
-        countInvoicesInCurrentMonth(userId),
-    ]);
+    const usageDoc = await MonthlyInvoiceUsage.findOne({ userId, periodKey });
+    const currentInvoiceCount = await countInvoicesInCurrentMonth(
+        userId,
+        usageDoc?.adminResetAt || null
+    );
     // Seed from current invoices so users do not get extra slots after deployment.
     // Once the ledger is ahead, deleted invoices still count for the month.
     const used = Math.max(usageDoc?.count || 0, currentInvoiceCount);
@@ -96,4 +99,24 @@ export async function releaseInvoiceCreation(userId) {
         { userId, periodKey, count: { $gt: 0 } },
         { $inc: { count: -1 } }
     );
+}
+
+/** Admin: restore full free monthly quota (5 new invoices) for a free-plan user. */
+export async function resetFreeInvoiceUsageForUser(userId) {
+    const info = await BusinessInfo.findOne({ userId });
+    if (isPremiumActive(info)) {
+        const err = new Error('Premium users have unlimited invoices.');
+        err.status = 400;
+        throw err;
+    }
+
+    const { periodKey } = getCurrentMonthRange();
+    const now = new Date();
+    await MonthlyInvoiceUsage.updateOne(
+        { userId, periodKey },
+        { $set: { count: 0, adminResetAt: now } },
+        { upsert: true }
+    );
+
+    return getInvoiceUsageForUser(userId);
 }
