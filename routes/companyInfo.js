@@ -36,7 +36,10 @@ router.put('/', auth, async (req, res) => {
     try {
         const existing = await getOrCreateBusinessInfo(req.user.userId);
         const allowDevPlan = process.env.ALLOW_DEV_PLAN === 'true';
-        const updates = pickAllowedBusinessUpdates(req.body, { allowPlan: allowDevPlan });
+        const updates = pickAllowedBusinessUpdates(req.body, {
+            allowPlan: allowDevPlan,
+            premium: isPremiumActive(existing),
+        });
         if (allowDevPlan && updates.plan !== undefined) {
             if (updates.plan === PLANS.PREMIUM) {
                 updates.premiumUntil = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);

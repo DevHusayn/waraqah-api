@@ -27,6 +27,11 @@ const businessInfoSchema = new mongoose.Schema({
     companyLogoAvatarUrl: { type: String, default: '' },
     companyStampUrl: { type: String, default: '' },
     authorizedSignatureUrl: { type: String, default: '' },
+    paymentAccountName: { type: String, default: '' },
+    paymentBankName: { type: String, default: '' },
+    paymentAccountNumber: { type: String, default: '' },
+    paymentInstructions: { type: String, default: '' },
+    invoiceTemplateId: { type: String, default: 'classic' },
 }, { timestamps: true });
 
 export default mongoose.model('BusinessInfo', businessInfoSchema);

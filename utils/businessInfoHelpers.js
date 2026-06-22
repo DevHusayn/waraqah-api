@@ -5,6 +5,30 @@ export const PLANS = {
     PREMIUM: 'premium',
 };
 
+export const DEFAULT_TEMPLATE_ID = 'classic';
+
+export const INVOICE_TEMPLATE_IDS = [
+    'classic',
+    'modern',
+    'minimal',
+    'bold',
+    'compact',
+    'professional',
+    'sidebar',
+    'corporate',
+    'creative',
+    'executive',
+];
+
+export const FREE_TEMPLATE_IDS = INVOICE_TEMPLATE_IDS.slice(0, 5);
+export const PREMIUM_TEMPLATE_IDS = INVOICE_TEMPLATE_IDS.slice(5);
+
+export function isTemplateAllowedForPlan(templateId, premium) {
+    if (!INVOICE_TEMPLATE_IDS.includes(templateId)) return false;
+    if (FREE_TEMPLATE_IDS.includes(templateId)) return true;
+    return Boolean(premium);
+}
+
 const ALLOWED_UPDATE_FIELDS = [
     'name',
     'address',
@@ -18,6 +42,11 @@ const ALLOWED_UPDATE_FIELDS = [
     'companyLogoAvatarUrl',
     'companyStampUrl',
     'authorizedSignatureUrl',
+    'paymentAccountName',
+    'paymentBankName',
+    'paymentAccountNumber',
+    'paymentInstructions',
+    'invoiceTemplateId',
 ];
 
 const PREMIUM_PNG_ASSET_FIELDS = [
@@ -43,7 +72,7 @@ function resolveCompanyLogo(doc) {
     return (o.companyLogoUrl || o.businessLogo || '').trim();
 }
 
-export function pickAllowedBusinessUpdates(body, { allowPlan = false } = {}) {
+export function pickAllowedBusinessUpdates(body, { allowPlan = false, premium = false } = {}) {
     const updates = {};
     for (const key of ALLOWED_UPDATE_FIELDS) {
         if (body[key] !== undefined) {
@@ -80,6 +109,23 @@ export function pickAllowedBusinessUpdates(body, { allowPlan = false } = {}) {
             clearPremiumAssets(updates);
         }
     }
+
+    if (updates.invoiceTemplateId !== undefined) {
+        const templateId = String(updates.invoiceTemplateId || DEFAULT_TEMPLATE_ID);
+        if (!isTemplateAllowedForPlan(templateId, premium)) {
+            const err = new Error('This invoice template requires a Premium plan.');
+            err.status = 403;
+            throw err;
+        }
+        updates.invoiceTemplateId = templateId;
+    }
+
+    for (const key of ['paymentAccountName', 'paymentBankName', 'paymentAccountNumber', 'paymentInstructions']) {
+        if (updates[key] !== undefined) {
+            updates[key] = String(updates[key] || '').trim();
+        }
+    }
+
     updates.defaultCurrency = 'NGN';
     return updates;
 }
@@ -107,6 +153,11 @@ export function toBusinessInfoResponse(doc) {
     const plan = premium ? PLANS.PREMIUM : PLANS.FREE;
     const logo = premium ? resolveCompanyLogo(o) : '';
 
+    let invoiceTemplateId = o.invoiceTemplateId || DEFAULT_TEMPLATE_ID;
+    if (!isTemplateAllowedForPlan(invoiceTemplateId, premium)) {
+        invoiceTemplateId = DEFAULT_TEMPLATE_ID;
+    }
+
     return {
         name: o.name || '',
         address: o.address || '',
@@ -126,6 +177,11 @@ export function toBusinessInfoResponse(doc) {
         companyLogoAvatarUrl: premium ? (o.companyLogoAvatarUrl || '').trim() : '',
         companyStampUrl: premium ? (o.companyStampUrl || '').trim() : '',
         authorizedSignatureUrl: premium ? (o.authorizedSignatureUrl || '').trim() : '',
+        paymentAccountName: o.paymentAccountName || '',
+        paymentBankName: o.paymentBankName || '',
+        paymentAccountNumber: o.paymentAccountNumber || '',
+        paymentInstructions: o.paymentInstructions || '',
+        invoiceTemplateId,
     };
 }
 
@@ -154,4 +210,9 @@ export const defaultBusinessInfoFields = {
     companyLogoAvatarUrl: '',
     companyStampUrl: '',
     authorizedSignatureUrl: '',
+    paymentAccountName: '',
+    paymentBankName: '',
+    paymentAccountNumber: '',
+    paymentInstructions: '',
+    invoiceTemplateId: DEFAULT_TEMPLATE_ID,
 };

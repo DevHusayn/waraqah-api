@@ -6,6 +6,7 @@ import authRoutes from './routes/auth.js';
 import invoiceRoutes from './routes/invoices.js';
 import clientRoutes from './routes/clients.js';
 import businessInfoRoutes from './routes/companyInfo.js';
+import productRoutes from './routes/products.js';
 import paymentRoutes, { paystackWebhookHandler } from './routes/payments.js';
 import { buildCorsOptions } from './utils/corsConfig.js';
 
@@ -45,6 +46,7 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/business-info', businessInfoRoutes);
+app.use('/api/products', productRoutes);
 
 app.get('/', (req, res) => {
     res.send('Waraqah API running');
