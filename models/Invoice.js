@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 
 const invoiceSchema = new mongoose.Schema({
     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: true },
+    clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: false, default: null },
     invoiceNumber: String,
     receiptNumber: String,
     date: String,

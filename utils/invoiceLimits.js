@@ -20,6 +20,7 @@ export async function countInvoicesInCurrentMonth(userId, resetAfter = null) {
     return Invoice.countDocuments({
         userId,
         createdAt: { $gte: countStart, $lt: end },
+        status: { $ne: 'draft' },
     });
 }
 

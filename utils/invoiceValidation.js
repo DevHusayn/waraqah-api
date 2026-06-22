@@ -3,6 +3,7 @@ import { getNextInvoiceNumber, receiptFromInvoiceNumber } from './invoiceNumber.
 const PAYMENT_METHODS = ['cash', 'bank_transfer', 'pos', 'card', 'online_gateway'];
 const PAID = 'paid';
 const CANCELLED = 'cancelled';
+const DRAFT = 'draft';
 const CANCELLABLE = ['pending', 'overdue'];
 
 function validationError(message, status = 400) {
@@ -11,10 +12,18 @@ function validationError(message, status = 400) {
     return err;
 }
 
+export function isDraftStatus(status) {
+    return status === DRAFT;
+}
+
 /** Block illegal status transitions and edits on terminal invoices. */
 export function assertInvoiceUpdateAllowed(existing, payload) {
     const prev = existing.status || 'pending';
     const next = payload.status ?? prev;
+
+    if (prev === DRAFT) {
+        return;
+    }
 
     if (prev === PAID) {
         throw validationError('Paid invoices cannot be modified.');
@@ -35,14 +44,18 @@ export function assertInvoiceUpdateAllowed(existing, payload) {
 
 export function normalizeInvoicePayload(body, { isCreate = false, existing = null } = {}) {
     const data = { ...body };
-    let status = data.status || 'pending';
+    let status = data.status || (isCreate ? DRAFT : 'pending');
 
     if (isCreate) {
-        status = 'pending';
-        data.status = 'pending';
+        status = data.status === DRAFT ? DRAFT : 'pending';
+        data.status = status;
         delete data.paymentMethod;
         delete data.receiptNumber;
         delete data.datePaid;
+        if (status === DRAFT) {
+            delete data.invoiceNumber;
+            delete data.receiptNumber;
+        }
     }
 
     if (!isCreate && existing) {
@@ -51,7 +64,16 @@ export function normalizeInvoicePayload(body, { isCreate = false, existing = nul
         data.status = status;
     }
 
-    if (status === PAID) {
+    if (status === DRAFT) {
+        delete data.paymentMethod;
+        delete data.receiptNumber;
+        delete data.datePaid;
+        delete data.invoiceNumber;
+        delete data.receiptNumber;
+        if (!data.clientId) {
+            data.clientId = null;
+        }
+    } else if (status === PAID) {
         if (!data.paymentMethod || !PAYMENT_METHODS.includes(data.paymentMethod)) {
             const err = new Error(
                 'Payment method is required for paid invoices (cash, bank_transfer, pos, card, or online_gateway).'
@@ -80,6 +102,12 @@ export async function assignDocumentNumbers(payload, existing, userId, generator
     const status = payload.status || 'pending';
     const result = { ...payload };
 
+    if (status === DRAFT) {
+        delete result.invoiceNumber;
+        delete result.receiptNumber;
+        return result;
+    }
+
     if (status === PAID) {
         const invNum = existing?.invoiceNumber ?? payload.invoiceNumber;
         result.invoiceNumber = invNum ?? null;
@@ -92,4 +120,8 @@ export async function assignDocumentNumbers(payload, existing, userId, generator
     }
 
     return result;
+}
+
+export function isFinalizingDraft(existing, payload) {
+    return existing?.status === DRAFT && payload.status === 'pending';
 }

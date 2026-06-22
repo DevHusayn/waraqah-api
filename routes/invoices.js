@@ -8,7 +8,12 @@ import {
 } from '../utils/invoiceLimits.js';
 import { getNextInvoiceNumber } from '../utils/invoiceNumber.js';
 import { getNextReceiptNumber } from '../utils/receiptNumber.js';
-import { normalizeInvoicePayload, assignDocumentNumbers } from '../utils/invoiceValidation.js';
+import {
+    normalizeInvoicePayload,
+    assignDocumentNumbers,
+    isFinalizingDraft,
+    isDraftStatus,
+} from '../utils/invoiceValidation.js';
 
 const router = express.Router();
 
@@ -33,6 +38,14 @@ router.get('/', auth, async (req, res) => {
     res.json(invoices);
 });
 
+// Draft invoices only
+router.get('/drafts', auth, async (req, res) => {
+    const drafts = await Invoice.find({ userId: req.user.userId, status: 'draft' }).sort({
+        updatedAt: -1,
+    });
+    res.json(drafts);
+});
+
 // Next sequential invoice number for this user (INV-0001, …)
 router.get('/next-number', auth, async (req, res) => {
     try {
@@ -53,12 +66,15 @@ router.get('/next-receipt-number', auth, async (req, res) => {
     }
 });
 
-// Create invoice
+// Create invoice or draft
 router.post('/', auth, async (req, res) => {
     let reserved = false;
+    const isDraft = isDraftStatus(req.body?.status);
     try {
-        await reserveInvoiceCreation(req.user.userId);
-        reserved = true;
+        if (!isDraft) {
+            await reserveInvoiceCreation(req.user.userId);
+            reserved = true;
+        }
         const normalized = normalizeInvoicePayload(req.body, { isCreate: true });
         const payload = await assignDocumentNumbers(
             normalized,
@@ -91,6 +107,7 @@ router.post('/', auth, async (req, res) => {
 
 // Update invoice
 router.put('/:id', auth, async (req, res) => {
+    let reserved = false;
     try {
         const existing = await Invoice.findOne({
             _id: req.params.id,
@@ -99,6 +116,11 @@ router.put('/:id', auth, async (req, res) => {
         if (!existing) return res.status(404).json({ message: 'Invoice not found' });
 
         const normalized = normalizeInvoicePayload(req.body, { existing });
+        if (isFinalizingDraft(existing, normalized)) {
+            await reserveInvoiceCreation(req.user.userId);
+            reserved = true;
+        }
+
         const payload = await assignDocumentNumbers(
             normalized,
             existing,
@@ -113,8 +135,18 @@ router.put('/:id', auth, async (req, res) => {
         );
         res.json(invoice);
     } catch (err) {
+        if (reserved) {
+            await releaseInvoiceCreation(req.user.userId);
+        }
         if (err.status === 400) {
             return res.status(400).json({ message: err.message });
+        }
+        if (err.code === 'INVOICE_LIMIT_REACHED') {
+            return res.status(403).json({
+                message: err.message,
+                code: err.code,
+                usage: err.usage,
+            });
         }
         res.status(500).json({ message: err.message || 'Could not update invoice' });
     }
