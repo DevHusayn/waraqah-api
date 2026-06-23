@@ -16,12 +16,19 @@ import {
 import { getOrCreatePremiumPlanCode } from '../services/paystackPlan.js';
 import { activatePremiumForUser, deactivatePremiumSubscription } from '../services/premiumActivation.js';
 import { toBusinessInfoResponse } from '../utils/businessInfoHelpers.js';
+import { isOriginAllowed } from '../utils/corsConfig.js';
 
 const router = express.Router();
 
 function getCallbackUrl(req) {
     const fromClient = req.body?.callbackOrigin;
-    const base = (fromClient || process.env.FRONTEND_URL || 'http://localhost:5173')
+    if (fromClient) {
+        const normalized = String(fromClient).replace(/\/$/, '');
+        if (isOriginAllowed(normalized)) {
+            return `${normalized}/upgrade/callback`;
+        }
+    }
+    const base = (process.env.FRONTEND_URL || 'http://localhost:5173')
         .toString()
         .replace(/\/$/, '');
     return `${base}/upgrade/callback`;

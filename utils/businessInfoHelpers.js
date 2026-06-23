@@ -1,4 +1,4 @@
-/** Shape and sanitize business profile for API responses */
+import { sanitizePlainText, sanitizeOptionalEmail, sanitizeHexColor, sanitizeNumber, sanitizeDataUrl } from './sanitize.js';
 
 export const PLANS = {
     FREE: 'free',
@@ -57,6 +57,20 @@ const PREMIUM_PNG_ASSET_FIELDS = [
 
 const PREMIUM_JPEG_ASSET_FIELDS = ['companyLogoAvatarUrl'];
 
+const TEXT_LIMITS = {
+    name: 200,
+    address: 500,
+    email: 254,
+    phone: 50,
+    website: 200,
+    paymentAccountName: 120,
+    paymentBankName: 120,
+    paymentAccountNumber: 40,
+    paymentInstructions: 1000,
+};
+
+const MAX_ASSET_BYTES = 500 * 1024;
+
 export function isValidPngDataUrl(value) {
     if (value === undefined || value === null || value === '') return true;
     return typeof value === 'string' && value.startsWith('data:image/png');
@@ -88,6 +102,12 @@ export function pickAllowedBusinessUpdates(body, { allowPlan = false, premium = 
     }
 
     for (const field of PREMIUM_PNG_ASSET_FIELDS) {
+        if (updates[field] !== undefined) {
+            updates[field] = sanitizeDataUrl(updates[field], {
+                maxBytes: MAX_ASSET_BYTES,
+                allowedPrefixes: ['data:image/png'],
+            });
+        }
         if (updates[field] !== undefined && !isValidPngDataUrl(updates[field])) {
             const err = new Error(`${field} must be a PNG image (data:image/png).`);
             err.status = 400;
@@ -96,6 +116,12 @@ export function pickAllowedBusinessUpdates(body, { allowPlan = false, premium = 
     }
 
     for (const field of PREMIUM_JPEG_ASSET_FIELDS) {
+        if (updates[field] !== undefined) {
+            updates[field] = sanitizeDataUrl(updates[field], {
+                maxBytes: MAX_ASSET_BYTES,
+                allowedPrefixes: ['data:image/jpeg'],
+            });
+        }
         if (updates[field] !== undefined && !isValidJpegDataUrl(updates[field])) {
             const err = new Error(`${field} must be a JPEG image (data:image/jpeg).`);
             err.status = 400;
@@ -120,9 +146,27 @@ export function pickAllowedBusinessUpdates(body, { allowPlan = false, premium = 
         updates.invoiceTemplateId = templateId;
     }
 
+    for (const key of ['name', 'address', 'phone', 'website']) {
+        if (updates[key] !== undefined) {
+            updates[key] = sanitizePlainText(updates[key], TEXT_LIMITS[key]);
+        }
+    }
+
+    if (updates.email !== undefined) {
+        updates.email = sanitizeOptionalEmail(updates.email);
+    }
+
+    if (updates.brandColor !== undefined) {
+        updates.brandColor = sanitizeHexColor(updates.brandColor);
+    }
+
+    if (updates.taxRate !== undefined) {
+        updates.taxRate = sanitizeNumber(updates.taxRate, { min: 0, max: 100, fallback: 10 });
+    }
+
     for (const key of ['paymentAccountName', 'paymentBankName', 'paymentAccountNumber', 'paymentInstructions']) {
         if (updates[key] !== undefined) {
-            updates[key] = String(updates[key] || '').trim();
+            updates[key] = sanitizePlainText(updates[key], TEXT_LIMITS[key]);
         }
     }
 

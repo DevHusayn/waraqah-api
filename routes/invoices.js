@@ -1,6 +1,7 @@
 import express from 'express';
 import Invoice from '../models/Invoice.js';
 import auth from '../middleware/auth.js';
+import validateObjectId from '../middleware/validateObjectId.js';
 import {
     getInvoiceUsageForUser,
     reserveInvoiceCreation,
@@ -106,7 +107,7 @@ router.post('/', auth, async (req, res) => {
 });
 
 // Update invoice
-router.put('/:id', auth, async (req, res) => {
+router.put('/:id', auth, validateObjectId(), async (req, res) => {
     let reserved = false;
     try {
         const existing = await Invoice.findOne({
@@ -153,7 +154,7 @@ router.put('/:id', auth, async (req, res) => {
 });
 
 // Delete invoice
-router.delete('/:id', auth, async (req, res) => {
+router.delete('/:id', auth, validateObjectId(), async (req, res) => {
     const invoice = await Invoice.findOneAndDelete({ _id: req.params.id, userId: req.user.userId });
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
     res.json({ message: 'Invoice deleted' });

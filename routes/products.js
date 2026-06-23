@@ -1,6 +1,7 @@
 import express from 'express';
 import Product from '../models/Product.js';
 import auth from '../middleware/auth.js';
+import validateObjectId from '../middleware/validateObjectId.js';
 
 const router = express.Router();
 
@@ -23,7 +24,7 @@ router.post('/', auth, async (req, res) => {
     res.status(201).json(product);
 });
 
-router.put('/:id', auth, async (req, res) => {
+router.put('/:id', auth, validateObjectId(), async (req, res) => {
     const name = req.body.name !== undefined ? String(req.body.name).trim() : undefined;
     if (name !== undefined && !name) {
         return res.status(400).json({ message: 'Product name is required' });
@@ -42,7 +43,7 @@ router.put('/:id', auth, async (req, res) => {
     res.json(product);
 });
 
-router.delete('/:id', auth, async (req, res) => {
+router.delete('/:id', auth, validateObjectId(), async (req, res) => {
     const product = await Product.findOneAndDelete({ _id: req.params.id, userId: req.user.userId });
     if (!product) return res.status(404).json({ message: 'Product not found' });
     res.json({ message: 'Product deleted' });

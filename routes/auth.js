@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import BusinessInfo from '../models/CompanyInfo.js';
 import auth from '../middleware/auth.js';
+import validateObjectId from '../middleware/validateObjectId.js';
 import { defaultBusinessInfoFields, PLANS, toBusinessInfoResponse } from '../utils/businessInfoHelpers.js';
 import Invoice from '../models/Invoice.js';
 import Client from '../models/Client.js';
@@ -15,6 +16,20 @@ import {
 import { sendPasswordResetEmail, getEmailErrorMessage } from '../utils/email.js';
 import { isStrongPassword, PASSWORD_REQUIREMENTS_MESSAGE } from '../utils/passwordValidation.js';
 import { createPasswordResetToken, hashPasswordResetToken } from '../utils/resetToken.js';
+import { sendServerError } from '../utils/apiError.js';
+import { JWT_EXPIRY } from '../utils/jwtConfig.js';
+import {
+    loginLimiter,
+    registerLimiter,
+    forgotPasswordLimiter,
+    resetPasswordLimiter,
+} from '../middleware/rateLimits.js';
+import {
+    sanitizePlainText,
+    sanitizeOptionalEmail,
+    sanitizeHexColor,
+    sanitizeNumber,
+} from '../utils/sanitize.js';
 
 const router = express.Router();
 
@@ -35,7 +50,7 @@ function getFrontendBaseUrl() {
 }
 
 // Admin: Suspend/Activate user
-router.patch('/admin/users/:id/status', auth, async (req, res) => {
+router.patch('/admin/users/:id/status', auth, validateObjectId(), async (req, res) => {
     try {
         const adminUser = await User.findById(req.user.userId);
         if (!adminUser || !adminUser.isAdmin) return res.status(403).json({ message: 'Forbidden: Admins only' });
@@ -46,12 +61,12 @@ router.patch('/admin/users/:id/status', auth, async (req, res) => {
         await user.save();
         res.json({ message: 'User status updated', status: user.status });
     } catch (err) {
-        res.status(500).json({ message: 'Server error', error: err.message });
+        return sendServerError(res, err);
     }
 });
 
 // Admin: Promote/Demote user
-router.patch('/admin/users/:id/admin', auth, async (req, res) => {
+router.patch('/admin/users/:id/admin', auth, validateObjectId(), async (req, res) => {
     try {
         const adminUser = await User.findById(req.user.userId);
         if (!adminUser || !adminUser.isAdmin) return res.status(403).json({ message: 'Forbidden: Admins only' });
@@ -62,12 +77,12 @@ router.patch('/admin/users/:id/admin', auth, async (req, res) => {
         await user.save();
         res.json({ message: 'User admin status updated', isAdmin: user.isAdmin });
     } catch (err) {
-        res.status(500).json({ message: 'Server error', error: err.message });
+        return sendServerError(res, err);
     }
 });
 
 // Admin: Delete user
-router.delete('/admin/users/:id', auth, async (req, res) => {
+router.delete('/admin/users/:id', auth, validateObjectId(), async (req, res) => {
     try {
         const adminUser = await User.findById(req.user.userId);
         if (!adminUser || !adminUser.isAdmin) return res.status(403).json({ message: 'Forbidden: Admins only' });
@@ -80,7 +95,7 @@ router.delete('/admin/users/:id', auth, async (req, res) => {
         await Client.deleteMany({ userId: req.params.id });
         res.json({ message: 'User deleted' });
     } catch (err) {
-        res.status(500).json({ message: 'Server error', error: err.message });
+        return sendServerError(res, err);
     }
 });
 
@@ -121,41 +136,69 @@ router.get('/admin/users', auth, async (req, res) => {
         );
         res.json(usersWithDetails);
     } catch (err) {
-        res.status(500).json({ message: 'Server error', error: err.message });
+        return sendServerError(res, err);
     }
 });
 
+function sanitizeRegisterBusinessInfo(businessInfo) {
+    if (!businessInfo || typeof businessInfo !== 'object') return {};
+    return {
+        name: sanitizePlainText(businessInfo.name, 200),
+        address: sanitizePlainText(businessInfo.address, 500),
+        email: businessInfo.email ? sanitizeOptionalEmail(businessInfo.email) : '',
+        phone: sanitizePlainText(businessInfo.phone, 50),
+        website: sanitizePlainText(businessInfo.website, 200),
+        brandColor: sanitizeHexColor(
+            businessInfo.brandColor,
+            defaultBusinessInfoFields.brandColor
+        ),
+        taxRate: sanitizeNumber(businessInfo.taxRate, {
+            min: 0,
+            max: 100,
+            fallback: defaultBusinessInfoFields.taxRate,
+        }),
+    };
+}
+
 // Register
-router.post('/register', async (req, res) => {
+router.post('/register', registerLimiter, async (req, res) => {
     try {
-        const { email, password, name, businessInfo } = req.body;
-        if (!email || !password) return res.status(400).json({ message: 'Email and password required' });
+        const email = normalizeEmail(req.body.email);
+        const password = req.body.password;
+        const name = sanitizePlainText(req.body.name, 120);
+        const businessInfo = req.body.businessInfo;
+
+        if (!email || !password) {
+            return res.status(400).json({ message: 'Email and password required' });
+        }
+        if (!isStrongPassword(password)) {
+            return res.status(400).json({ message: PASSWORD_REQUIREMENTS_MESSAGE });
+        }
+
         const existing = await User.findOne({ email });
         if (existing) return res.status(409).json({ message: 'Email already registered' });
+
         const hash = await bcrypt.hash(password, 10);
         const user = await User.create({ email, password: hash, name });
-        // Save business info if provided (ensure all fields are present)
+        const sanitizedBusinessInfo = sanitizeRegisterBusinessInfo(businessInfo);
+
         await BusinessInfo.create({
             userId: user._id,
             ...defaultBusinessInfoFields,
-            ...(businessInfo ? {
-                name: businessInfo.name || '',
-                address: businessInfo.address || '',
-                email: businessInfo.email || '',
-                phone: businessInfo.phone || '',
-                website: businessInfo.website || '',
-                brandColor: businessInfo.brandColor || defaultBusinessInfoFields.brandColor,
-                taxRate: businessInfo.taxRate ?? defaultBusinessInfoFields.taxRate,
-            } : {}),
+            ...sanitizedBusinessInfo,
         });
-        const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+        const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRY });
         res.status(201).json({
             message: 'User registered',
             token,
             user: { id: user._id, email: user.email, name: user.name, isAdmin: user.isAdmin, status: user.status },
         });
     } catch (err) {
-        res.status(500).json({ message: 'Server error', error: err.message });
+        if (err.status === 400) {
+            return res.status(400).json({ message: err.message });
+        }
+        return sendServerError(res, err);
     }
 });
 
@@ -165,9 +208,10 @@ router.post('/register', async (req, res) => {
 const MAX_ATTEMPTS = 5;
 const LOCK_TIME = 15 * 60 * 1000; // 15 minutes
 
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const email = normalizeEmail(req.body.email);
+        const { password } = req.body;
         const user = await User.findOne({ email });
         if (!user) return res.status(401).json({ message: 'Invalid credentials' });
 
@@ -200,15 +244,15 @@ router.post('/login', async (req, res) => {
         user.lockUntil = undefined;
         user.lastLogin = new Date();
         await user.save();
-        const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+        const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRY });
         res.json({ token, user: { id: user._id, email: user.email, name: user.name, isAdmin: user.isAdmin, status: user.status, lastLogin: user.lastLogin } });
     } catch (err) {
-        res.status(500).json({ message: 'Server error', error: err.message });
+        return sendServerError(res, err);
     }
 });
 
 // Password reset request (send token)
-router.post('/forgot-password', async (req, res) => {
+router.post('/forgot-password', forgotPasswordLimiter, async (req, res) => {
     try {
         const email = normalizeEmail(req.body.email);
         if (!email) {
@@ -253,7 +297,7 @@ router.post('/forgot-password', async (req, res) => {
 });
 
 // Password reset (set new password)
-router.post('/reset-password/:token', async (req, res) => {
+router.post('/reset-password/:token', resetPasswordLimiter, async (req, res) => {
     try {
         const { password } = req.body;
         if (!password) {
@@ -290,7 +334,7 @@ router.post('/reset-password/:token', async (req, res) => {
 });
 
 // Admin: set user plan (free | premium)
-router.patch('/admin/users/:id/plan', auth, async (req, res) => {
+router.patch('/admin/users/:id/plan', auth, validateObjectId(), async (req, res) => {
     try {
         const adminUser = await User.findById(req.user.userId);
         if (!adminUser || !adminUser.isAdmin) {
@@ -322,12 +366,12 @@ router.patch('/admin/users/:id/plan', auth, async (req, res) => {
         }
         res.json({ message: 'Plan updated', businessInfo: toBusinessInfoResponse(info) });
     } catch (err) {
-        res.status(500).json({ message: 'Server error', error: err.message });
+        return sendServerError(res, err);
     }
 });
 
 // Admin unlock user
-router.patch('/admin/users/:id/unlock', auth, async (req, res) => {
+router.patch('/admin/users/:id/unlock', auth, validateObjectId(), async (req, res) => {
     try {
         const adminUser = await User.findById(req.user.userId);
         if (!adminUser || !adminUser.isAdmin) return res.status(403).json({ message: 'Forbidden: Admins only' });
@@ -338,12 +382,12 @@ router.patch('/admin/users/:id/unlock', auth, async (req, res) => {
         await user.save();
         res.json({ message: 'User account unlocked.' });
     } catch (err) {
-        res.status(500).json({ message: 'Server error', error: err.message });
+        return sendServerError(res, err);
     }
 });
 
 // Admin: reset free-plan monthly invoice quota (5 invoices)
-router.patch('/admin/users/:id/invoice-usage/reset', auth, async (req, res) => {
+router.patch('/admin/users/:id/invoice-usage/reset', auth, validateObjectId(), async (req, res) => {
     try {
         const adminUser = await User.findById(req.user.userId);
         if (!adminUser || !adminUser.isAdmin) {
@@ -361,7 +405,7 @@ router.patch('/admin/users/:id/invoice-usage/reset', auth, async (req, res) => {
         if (err.status === 400) {
             return res.status(400).json({ message: err.message });
         }
-        res.status(500).json({ message: 'Server error', error: err.message });
+        return sendServerError(res, err);
     }
 });
 

@@ -10,6 +10,8 @@ import {
     isPremiumActive,
     PLANS,
 } from '../utils/businessInfoHelpers.js';
+import { isProduction } from '../utils/envValidation.js';
+import { sendServerError } from '../utils/apiError.js';
 
 const router = express.Router();
 
@@ -27,7 +29,7 @@ router.get('/', auth, async (req, res) => {
         const info = await getOrCreateBusinessInfo(req.user.userId);
         res.json(toBusinessInfoResponse(info));
     } catch (err) {
-        res.status(500).json({ message: 'Server error', error: err.message });
+        return sendServerError(res, err);
     }
 });
 
@@ -35,7 +37,7 @@ router.get('/', auth, async (req, res) => {
 router.put('/', auth, async (req, res) => {
     try {
         const existing = await getOrCreateBusinessInfo(req.user.userId);
-        const allowDevPlan = process.env.ALLOW_DEV_PLAN === 'true';
+        const allowDevPlan = !isProduction() && process.env.ALLOW_DEV_PLAN === 'true';
         const updates = pickAllowedBusinessUpdates(req.body, {
             allowPlan: allowDevPlan,
             premium: isPremiumActive(existing),
@@ -63,7 +65,7 @@ router.put('/', auth, async (req, res) => {
         if (err.status === 400) {
             return res.status(400).json({ message: err.message });
         }
-        res.status(500).json({ message: 'Server error', error: err.message });
+        return sendServerError(res, err);
     }
 });
 
