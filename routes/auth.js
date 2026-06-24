@@ -157,6 +157,10 @@ function sanitizeRegisterBusinessInfo(businessInfo) {
             max: 100,
             fallback: defaultBusinessInfoFields.taxRate,
         }),
+        paymentAccountName: sanitizePlainText(businessInfo.paymentAccountName, 120),
+        paymentBankName: sanitizePlainText(businessInfo.paymentBankName, 120),
+        paymentAccountNumber: sanitizePlainText(businessInfo.paymentAccountNumber, 40),
+        paymentInstructions: sanitizePlainText(businessInfo.paymentInstructions, 500),
     };
 }
 
@@ -165,8 +169,12 @@ router.post('/register', registerLimiter, async (req, res) => {
     try {
         const email = normalizeEmail(req.body.email);
         const password = req.body.password;
-        const name = sanitizePlainText(req.body.name, 120);
         const businessInfo = req.body.businessInfo;
+        const sanitizedBusinessInfo = sanitizeRegisterBusinessInfo(businessInfo);
+        const name =
+            sanitizePlainText(req.body.name, 120) ||
+            sanitizedBusinessInfo.name ||
+            '';
 
         if (!email || !password) {
             return res.status(400).json({ message: 'Email and password required' });
@@ -180,8 +188,6 @@ router.post('/register', registerLimiter, async (req, res) => {
 
         const hash = await bcrypt.hash(password, 10);
         const user = await User.create({ email, password: hash, name });
-        const sanitizedBusinessInfo = sanitizeRegisterBusinessInfo(businessInfo);
-
         await BusinessInfo.create({
             userId: user._id,
             ...defaultBusinessInfoFields,
