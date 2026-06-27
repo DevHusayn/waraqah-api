@@ -62,6 +62,91 @@ export async function getInvoiceUsageForUser(userId) {
     };
 }
 
+function buildPremiumUsage({ start, end }) {
+    return {
+        unlimited: true,
+        limit: null,
+        used: 0,
+        remaining: null,
+        canCreate: true,
+        periodStart: start.toISOString(),
+        periodEnd: end.toISOString(),
+    };
+}
+
+function buildFreeUsage({ start, end, used }) {
+    const limit = FREE_MONTHLY_INVOICE_LIMIT;
+    const remaining = Math.max(0, limit - used);
+    return {
+        unlimited: false,
+        limit,
+        used,
+        remaining,
+        canCreate: used < limit,
+        periodStart: start.toISOString(),
+        periodEnd: end.toISOString(),
+    };
+}
+
+function countInvoicesSinceReset(invoices, userId, resetAfter, rangeStart, rangeEnd) {
+    const countStart =
+        resetAfter instanceof Date && resetAfter > rangeStart ? resetAfter : rangeStart;
+    const id = userId.toString();
+    return invoices.filter(
+        (inv) =>
+            inv.userId.toString() === id &&
+            inv.createdAt >= countStart &&
+            inv.createdAt < rangeEnd
+    ).length;
+}
+
+/** Batch invoice usage for admin user list (avoids N+1 DB queries). */
+export async function getInvoiceUsageMapForUsers(userIds) {
+    const usageMap = new Map();
+    if (!userIds.length) return usageMap;
+
+    const { start, end, periodKey } = getCurrentMonthRange();
+    const [businessInfos, usageDocs, monthInvoices] = await Promise.all([
+        BusinessInfo.find({ userId: { $in: userIds } }),
+        MonthlyInvoiceUsage.find({ userId: { $in: userIds }, periodKey }),
+        Invoice.find({
+            userId: { $in: userIds },
+            createdAt: { $gte: start, $lt: end },
+            status: { $ne: 'draft' },
+        }).select('userId createdAt'),
+    ]);
+
+    const businessByUser = new Map(
+        businessInfos.map((info) => [info.userId.toString(), info])
+    );
+    const usageByUser = new Map(
+        usageDocs.map((doc) => [doc.userId.toString(), doc])
+    );
+
+    for (const userId of userIds) {
+        const id = userId.toString();
+        const info = businessByUser.get(id);
+
+        if (isPremiumActive(info)) {
+            usageMap.set(id, buildPremiumUsage({ start, end }));
+            continue;
+        }
+
+        const usageDoc = usageByUser.get(id);
+        const currentInvoiceCount = countInvoicesSinceReset(
+            monthInvoices,
+            userId,
+            usageDoc?.adminResetAt || null,
+            start,
+            end
+        );
+        const used = Math.max(usageDoc?.count || 0, currentInvoiceCount);
+        usageMap.set(id, buildFreeUsage({ start, end, used }));
+    }
+
+    return usageMap;
+}
+
 export async function reserveInvoiceCreation(userId) {
     const usage = await getInvoiceUsageForUser(userId);
     if (usage.unlimited) return usage;

@@ -11,6 +11,7 @@ import Invoice from '../models/Invoice.js';
 import Client from '../models/Client.js';
 import {
     getInvoiceUsageForUser,
+    getInvoiceUsageMapForUsers,
     resetFreeInvoiceUsageForUser,
 } from '../utils/invoiceLimits.js';
 import { sendPasswordResetEmail, getEmailErrorMessage } from '../utils/email.js';
@@ -116,24 +117,24 @@ router.get('/admin/users', auth, async (req, res) => {
             { $group: { _id: '$userId', count: { $sum: 1 } } }
         ]);
 
-        const usersWithDetails = await Promise.all(
-            users.map(async (user) => {
-                const businessInfo =
-                    businessInfos.find((bi) => bi.userId.toString() === user._id.toString()) || null;
-                const invoiceCount =
-                    invoiceCounts.find((ic) => ic._id.toString() === user._id.toString())?.count || 0;
-                const clientCount =
-                    clientCounts.find((cc) => cc._id.toString() === user._id.toString())?.count || 0;
-                const invoiceUsage = await getInvoiceUsageForUser(user._id);
-                return {
-                    ...user.toObject(),
-                    businessInfo,
-                    invoiceCount,
-                    clientCount,
-                    invoiceUsage,
-                };
-            })
-        );
+        const invoiceUsageByUser = await getInvoiceUsageMapForUsers(users.map((u) => u._id));
+
+        const usersWithDetails = users.map((user) => {
+            const businessInfo =
+                businessInfos.find((bi) => bi.userId.toString() === user._id.toString()) || null;
+            const invoiceCount =
+                invoiceCounts.find((ic) => ic._id.toString() === user._id.toString())?.count || 0;
+            const clientCount =
+                clientCounts.find((cc) => cc._id.toString() === user._id.toString())?.count || 0;
+            const invoiceUsage = invoiceUsageByUser.get(user._id.toString());
+            return {
+                ...user.toObject(),
+                businessInfo,
+                invoiceCount,
+                clientCount,
+                invoiceUsage,
+            };
+        });
         res.json(usersWithDetails);
     } catch (err) {
         return sendServerError(res, err);
