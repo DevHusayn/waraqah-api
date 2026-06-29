@@ -65,6 +65,40 @@ async function fulfillPremiumPayment(payment, paystackData) {
     return payment;
 }
 
+function formatPaymentForClient(payment) {
+    return {
+        id: String(payment._id),
+        reference: payment.reference,
+        amount: payment.amount / 100,
+        currency: payment.currency || 'NGN',
+        status: payment.status,
+        type: payment.type,
+        channel: payment.channel || '',
+        paidAt: payment.paidAt,
+        createdAt: payment.createdAt,
+    };
+}
+
+async function recordSubscriptionCharge(userId, paystackData) {
+    const reference = paystackData.reference;
+    if (!reference) return;
+
+    const existing = await Payment.findOne({ reference });
+    if (existing) return;
+
+    await Payment.create({
+        userId,
+        reference,
+        amount: paystackData.amount || PREMIUM_AMOUNT_KOBO,
+        currency: (paystackData.currency || 'NGN').toUpperCase(),
+        status: 'success',
+        type: 'subscription',
+        channel: paystackData.channel || '',
+        paidAt: paystackData.paid_at ? new Date(paystackData.paid_at) : new Date(),
+        paystackSubscriptionCode: paystackData.subscription?.subscription_code || '',
+    });
+}
+
 async function renewBySubscriptionCode(subscriptionCode, paystackData) {
     const info = await BusinessInfo.findOne({ paystackSubscriptionCode: subscriptionCode });
     if (!info) return;
@@ -73,6 +107,7 @@ async function renewBySubscriptionCode(subscriptionCode, paystackData) {
         months: 1,
         subscription: { ...subMeta, subscriptionCode },
     });
+    await recordSubscriptionCharge(info.userId, paystackData);
 }
 
 /** Public pricing info */
@@ -108,6 +143,19 @@ router.get('/plan', auth, async (req, res) => {
         });
     } catch (err) {
         res.status(500).json({ message: err.message });
+    }
+});
+
+/** Billing history for the authenticated user */
+router.get('/history', auth, async (req, res) => {
+    try {
+        const payments = await Payment.find({ userId: req.user.userId })
+            .sort({ paidAt: -1, createdAt: -1 })
+            .limit(50)
+            .lean();
+        res.json(payments.map(formatPaymentForClient));
+    } catch (err) {
+        res.status(500).json({ message: err.message || 'Could not load billing history' });
     }
 });
 

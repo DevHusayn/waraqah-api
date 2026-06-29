@@ -31,6 +31,7 @@ import {
     sanitizeHexColor,
     sanitizeNumber,
 } from '../utils/sanitize.js';
+import { setAuthCookies, clearAuthCookies, getTokenFromRequest } from '../utils/authCookie.js';
 
 const router = express.Router();
 
@@ -43,6 +44,17 @@ const RESET_EMAIL_COOLDOWN_MS = 2 * 60 * 1000;
 
 function normalizeEmail(email) {
     return String(email || '').trim().toLowerCase();
+}
+
+function toPublicUser(user, extra = {}) {
+    return {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        isAdmin: user.isAdmin,
+        status: user.status,
+        ...extra,
+    };
 }
 
 function getFrontendBaseUrl() {
@@ -196,10 +208,11 @@ router.post('/register', registerLimiter, async (req, res) => {
         });
 
         const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRY });
+        setAuthCookies(res, token);
         res.status(201).json({
             message: 'User registered',
+            user: toPublicUser(user),
             token,
-            user: { id: user._id, email: user.email, name: user.name, isAdmin: user.isAdmin, status: user.status },
         });
     } catch (err) {
         if (err.status === 400) {
@@ -252,10 +265,40 @@ router.post('/login', loginLimiter, async (req, res) => {
         user.lastLogin = new Date();
         await user.save();
         const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRY });
-        res.json({ token, user: { id: user._id, email: user.email, name: user.name, isAdmin: user.isAdmin, status: user.status, lastLogin: user.lastLogin } });
+        setAuthCookies(res, token);
+        res.json({
+            user: toPublicUser(user, { lastLogin: user.lastLogin }),
+            token,
+        });
     } catch (err) {
         return sendServerError(res, err);
     }
+});
+
+router.get('/me', async (req, res) => {
+    try {
+        const token = getTokenFromRequest(req);
+        if (!token) {
+            return res.json({ user: null });
+        }
+
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const user = await User.findById(decoded.userId);
+        if (!user || user.status === 'suspended') {
+            clearAuthCookies(res);
+            return res.json({ user: null });
+        }
+
+        return res.json({ user: toPublicUser(user, { lastLogin: user.lastLogin }) });
+    } catch {
+        clearAuthCookies(res);
+        return res.json({ user: null });
+    }
+});
+
+router.post('/logout', (req, res) => {
+    clearAuthCookies(res);
+    res.json({ message: 'Logged out' });
 });
 
 // Password reset request (send token)

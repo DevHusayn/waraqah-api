@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import hpp from 'hpp';
 import mongoSanitize from 'express-mongo-sanitize';
 import dotenv from 'dotenv';
+import cookieParser from 'cookie-parser';
 import authRoutes from './routes/auth.js';
 import invoiceRoutes from './routes/invoices.js';
 import clientRoutes from './routes/clients.js';
@@ -14,6 +15,7 @@ import paymentRoutes, { paystackWebhookHandler } from './routes/payments.js';
 import { buildCorsOptions } from './utils/corsConfig.js';
 import { assertEnvOrExit } from './utils/envValidation.js';
 import { globalApiLimiter, webhookLimiter } from './middleware/rateLimits.js';
+import csrfProtection from './middleware/csrf.js';
 
 dotenv.config();
 assertEnvOrExit();
@@ -36,6 +38,7 @@ app.post(
 );
 
 app.use(express.json({ limit: '2mb' }));
+app.use(cookieParser());
 app.use(mongoSanitize());
 
 const PORT = process.env.PORT || 5000;
@@ -61,6 +64,7 @@ app.use(async (req, res, next) => {
 });
 
 app.use('/api', globalApiLimiter);
+app.use('/api', csrfProtection);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/payments', paymentRoutes);

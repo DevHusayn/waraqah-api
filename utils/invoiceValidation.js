@@ -120,6 +120,11 @@ export function sanitizeInvoicePayload(body) {
         data.isRecurring = Boolean(data.isRecurring);
     }
 
+    // Recurring invoices disabled until automation is supported in production.
+    data.isRecurring = false;
+    data.recurringFrequency = null;
+    data.recurringEndDate = null;
+
     return data;
 }
 
