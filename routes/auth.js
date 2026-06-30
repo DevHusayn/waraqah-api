@@ -14,7 +14,7 @@ import {
     getInvoiceUsageMapForUsers,
     resetFreeInvoiceUsageForUser,
 } from '../utils/invoiceLimits.js';
-import { sendPasswordResetEmail, getEmailErrorMessage } from '../utils/email.js';
+import { sendPasswordResetEmail, getEmailErrorMessage, PASSWORD_RESET_EXPIRY_MINUTES } from '../utils/email.js';
 import { isStrongPassword, PASSWORD_REQUIREMENTS_MESSAGE } from '../utils/passwordValidation.js';
 import { createPasswordResetToken, hashPasswordResetToken } from '../utils/resetToken.js';
 import { sendServerError } from '../utils/apiError.js';
@@ -335,7 +335,7 @@ router.post('/forgot-password', forgotPasswordLimiter, async (req, res) => {
         }
 
         user.passwordResetToken = hashPasswordResetToken(token);
-        user.passwordResetExpires = Date.now() + 60 * 60 * 1000;
+        user.passwordResetExpires = Date.now() + PASSWORD_RESET_EXPIRY_MINUTES * 60 * 1000;
         user.passwordResetRequestedAt = new Date();
         await user.save();
 
