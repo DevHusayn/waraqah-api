@@ -9,7 +9,7 @@ const businessInfoSchema = new mongoose.Schema({
     website: String,
     defaultCurrency: { type: String, default: 'NGN' },
     taxRate: { type: Number, default: 10 },
-    brandColor: { type: String, default: '#0ea5e9' },
+    brandColor: { type: String, default: '#16A34A' },
     plan: { type: String, enum: ['free', 'premium'], default: 'free' },
     premiumUntil: { type: Date, default: null },
     subscriptionStatus: {

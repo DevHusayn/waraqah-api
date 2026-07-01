@@ -29,7 +29,7 @@ function sanitizePublicBusiness(info) {
         phone: info.phone || '',
         website: info.website || '',
         companyLogoUrl: info.companyLogoUrl || info.companyLogoAvatarUrl || '',
-        brandColor: info.brandColor || '#0ea5e9',
+        brandColor: info.brandColor || '#16A34A',
         paymentAccountName: info.paymentAccountName || '',
         paymentBankName: info.paymentBankName || '',
         paymentAccountNumber: info.paymentAccountNumber || '',

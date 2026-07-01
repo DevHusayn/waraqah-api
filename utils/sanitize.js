@@ -39,11 +39,11 @@ export function sanitizeOptionalEmail(value) {
     return normalized;
 }
 
-export function sanitizeHexColor(value, fallback = '#0ea5e9') {
+export function sanitizeHexColor(value, fallback = '#16A34A') {
     const color = sanitizePlainText(value, 7);
     if (!color) return fallback;
     if (!HEX_COLOR_PATTERN.test(color)) {
-        const err = new Error('Please enter a valid color code (e.g. #0ea5e9).');
+        const err = new Error('Please enter a valid color code (e.g. #16A34A).');
         err.status = 400;
         throw err;
     }

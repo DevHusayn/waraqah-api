@@ -5,15 +5,20 @@
 
 export const BRAND = {
     name: 'Waraqah',
-    accent: '#0ea5e9',
-    accentDark: '#0284c7',
-    accentLight: '#e0f2fe',
-    text: '#0f172a',
+    accent: '#16A34A',
+    accentDark: '#15803D',
+    accentLight: '#DCFCE7',
+    secondary: '#86EFAC',
+    text: '#0F172A',
     textMuted: '#64748b',
     textLight: '#94a3b8',
-    background: '#f1f5f9',
+    background: '#F8FAFC',
     surface: '#ffffff',
-    border: '#e2e8f0',
+    border: '#E2E8F0',
+    success: '#16A34A',
+    info: '#22C55E',
+    warning: '#F59E0B',
+    error: '#DC2626',
 };
 
 export const PASSWORD_RESET_EXPIRY_MINUTES = 15;
