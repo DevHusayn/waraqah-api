@@ -24,13 +24,27 @@ export async function loadOwnerNotificationContext(userId) {
     };
 }
 
+function resolveInvoiceId(invoiceOrId) {
+    if (invoiceOrId == null || invoiceOrId === '') return null;
+    if (typeof invoiceOrId === 'string' || typeof invoiceOrId === 'number') {
+        return String(invoiceOrId);
+    }
+
+    const raw = invoiceOrId._id ?? invoiceOrId.id;
+    if (raw == null || raw === '') return null;
+    if (typeof raw === 'object' && typeof raw.toString === 'function') {
+        return raw.toString();
+    }
+    return String(raw);
+}
+
 export function buildOwnerInvoiceUrl(invoiceOrId, options = {}) {
-    const id = invoiceOrId?._id ?? invoiceOrId?.id ?? invoiceOrId;
+    const id = resolveInvoiceId(invoiceOrId);
     if (!id) {
         return `${getFrontendBaseUrl()}/invoices`;
     }
 
-    const url = `${getFrontendBaseUrl()}/invoices/${String(id)}`;
+    const url = `${getFrontendBaseUrl()}/invoices/${id}`;
     if (options.view === 'receipt') {
         return `${url}?view=receipt`;
     }
