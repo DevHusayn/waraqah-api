@@ -46,6 +46,23 @@ export function setAuthCookies(res, token) {
         httpOnly: false,
         maxAge,
     });
+
+    return csrfToken;
+}
+
+/** Ensure a CSRF cookie exists for an active session; return token for cross-origin clients. */
+export function ensureCsrfCookie(req, res) {
+    const existing = req.cookies?.[CSRF_COOKIE_NAME];
+    if (existing) return existing;
+
+    const csrfToken = createCsrfToken();
+    const base = cookieBaseOptions();
+    res.cookie(CSRF_COOKIE_NAME, csrfToken, {
+        ...base,
+        httpOnly: false,
+        maxAge: sessionMaxAgeMs(),
+    });
+    return csrfToken;
 }
 
 export function clearAuthCookies(res) {

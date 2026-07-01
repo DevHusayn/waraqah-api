@@ -34,7 +34,7 @@ import {
     sanitizeHexColor,
     sanitizeNumber,
 } from '../utils/sanitize.js';
-import { setAuthCookies, clearAuthCookies, getTokenFromRequest } from '../utils/authCookie.js';
+import { setAuthCookies, clearAuthCookies, getTokenFromRequest, ensureCsrfCookie } from '../utils/authCookie.js';
 
 const router = express.Router();
 
@@ -229,11 +229,12 @@ router.post('/register', registerLimiter, async (req, res) => {
         sendRegistrationEmails({ user, verificationToken });
 
         const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRY });
-        setAuthCookies(res, token);
+        const csrfToken = setAuthCookies(res, token);
         res.status(201).json({
             message: 'User registered',
             user: toPublicUser(user),
             token,
+            csrfToken,
         });
     } catch (err) {
         if (err.status === 400) {
@@ -294,10 +295,11 @@ router.post('/login', loginLimiter, async (req, res) => {
         await user.save();
 
         const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRY });
-        setAuthCookies(res, token);
+        const csrfToken = setAuthCookies(res, token);
         res.json({
             user: toPublicUser(user, { lastLogin: user.lastLogin }),
             token,
+            csrfToken,
         });
     } catch (err) {
         return sendServerError(res, err);
@@ -318,7 +320,11 @@ router.get('/me', async (req, res) => {
             return res.json({ user: null });
         }
 
-        return res.json({ user: toPublicUser(user, { lastLogin: user.lastLogin }) });
+        const csrfToken = ensureCsrfCookie(req, res);
+        return res.json({
+            user: toPublicUser(user, { lastLogin: user.lastLogin }),
+            csrfToken,
+        });
     } catch {
         clearAuthCookies(res);
         return res.json({ user: null });
