@@ -36,7 +36,11 @@ const invoiceSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now },
     // Recurring invoice fields
     isRecurring: { type: Boolean, default: false },
-    recurringFrequency: { type: String, enum: ['weekly', 'bi-weekly', 'monthly', 'quarterly', 'yearly'], default: null },
+    recurringFrequency: {
+        type: String,
+        enum: ['weekly', 'bi-weekly', 'monthly', 'quarterly', 'yearly'],
+        required: false,
+    },
     recurringEndDate: { type: String, default: null },
     lastPaymentReminderAt: { type: Date, default: null },
 }, { timestamps: true });

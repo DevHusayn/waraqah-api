@@ -80,7 +80,7 @@ export function sanitizeInvoicePayload(body) {
     }
 
     if (data.recurringFrequency !== undefined && !RECURRING_FREQUENCIES.includes(data.recurringFrequency)) {
-        data.recurringFrequency = null;
+        delete data.recurringFrequency;
     }
 
     if (Array.isArray(data.items)) {
@@ -122,8 +122,8 @@ export function sanitizeInvoicePayload(body) {
 
     // Recurring invoices disabled until automation is supported in production.
     data.isRecurring = false;
-    data.recurringFrequency = null;
-    data.recurringEndDate = null;
+    delete data.recurringFrequency;
+    delete data.recurringEndDate;
 
     return data;
 }
