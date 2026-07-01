@@ -2,6 +2,8 @@
 import cron from 'node-cron';
 import Invoice from './models/Invoice.js';
 import { reserveInvoiceCreation, releaseInvoiceCreation } from './utils/invoiceLimits.js';
+import { attachPublicTokenIfNeeded } from './utils/invoicePublicToken.js';
+import { tryAutoEmailInvoice } from './src/emails/helpers/invoiceDispatch.js';
 
 // This function is adapted from generateRecurringInvoices.js
 async function generateRecurringInvoices() {
@@ -48,7 +50,9 @@ async function generateRecurringInvoices() {
                 invoiceNumber: `${template.invoiceNumber}-${nextDate.toISOString().slice(0, 10)}`,
             });
             try {
+                attachPublicTokenIfNeeded(newInvoice);
                 await newInvoice.save();
+                tryAutoEmailInvoice({ invoice: newInvoice, userId: template.userId });
             } catch (err) {
                 await releaseInvoiceCreation(template.userId);
                 throw err;

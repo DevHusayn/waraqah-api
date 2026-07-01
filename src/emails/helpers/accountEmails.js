@@ -10,7 +10,7 @@ import { getFrontendBaseUrl } from './invoiceContext.js';
  */
 export function sendRegistrationEmails({ user, verificationToken }) {
     const baseUrl = getFrontendBaseUrl();
-    const dashboardUrl = `${baseUrl}/dashboard`;
+    const dashboardUrl = baseUrl;
     const verificationUrl = `${baseUrl}/verify-email/${verificationToken}`;
 
     Promise.allSettled([

@@ -1,6 +1,7 @@
 import express from 'express';
 import Invoice from '../models/Invoice.js';
 import auth from '../middleware/auth.js';
+import requireEmailVerified from '../middleware/requireEmailVerified.js';
 import validateObjectId from '../middleware/validateObjectId.js';
 import {
     getInvoiceUsageForUser,
@@ -16,11 +17,17 @@ import {
     isDraftStatus,
 } from '../utils/invoiceValidation.js';
 import {
-    sendInvoiceEmail,
     sendReceiptEmail,
     sendPaymentConfirmationEmail,
     sendPaymentReminderEmail,
     getEmailErrorMessage,
+    dispatchInvoiceEmailToClient,
+    tryAutoEmailInvoice,
+    dispatchOverdueInvoiceEmails,
+    dispatchCancelledInvoiceEmails,
+    notifyOwnerInvoicePaid,
+    notifyOwnerInvoiceReminderSent,
+    notifyOwnerInvoiceReceiptSent,
 } from '../src/emails/index.js';
 import { PAYMENT_REMINDER_COOLDOWN_MS } from '../src/emails/config.js';
 import {
@@ -31,11 +38,6 @@ import {
     computeDaysUntilDue,
 } from '../src/emails/helpers/invoiceContext.js';
 import { attachPublicTokenIfNeeded, ensureInvoicePublicToken } from '../utils/invoicePublicToken.js';
-import {
-    notifyOwnerInvoiceEmailed,
-    notifyOwnerInvoicePaid,
-    notifyOwnerInvoiceReminderSent,
-} from '../src/emails/helpers/ownerNotifications.js';
 
 const router = express.Router();
 
@@ -150,7 +152,7 @@ router.get('/next-receipt-number', auth, async (req, res) => {
 });
 
 // Create invoice or draft
-router.post('/', auth, async (req, res) => {
+router.post('/', auth, requireEmailVerified, async (req, res) => {
     let reserved = false;
     const isDraft = isDraftStatus(req.body?.status);
     try {
@@ -170,6 +172,9 @@ router.post('/', auth, async (req, res) => {
             ...payload,
             userId: req.user.userId,
         });
+        if (!isDraft) {
+            tryAutoEmailInvoice({ invoice, userId: req.user.userId });
+        }
         res.status(201).json(invoice);
     } catch (err) {
         if (err.status === 400) {
@@ -190,7 +195,7 @@ router.post('/', auth, async (req, res) => {
 });
 
 // Update invoice
-router.put('/:id', auth, validateObjectId(), async (req, res) => {
+router.put('/:id', auth, requireEmailVerified, validateObjectId(), async (req, res) => {
     let reserved = false;
     try {
         const existing = await Invoice.findOne({
@@ -223,8 +228,25 @@ router.put('/:id', auth, validateObjectId(), async (req, res) => {
         const wasPaid =
             existing.status !== PAID &&
             invoice.status === PAID;
+        const becameOverdue =
+            existing.status !== 'overdue' &&
+            invoice.status === 'overdue';
+        const becameCancelled =
+            existing.status !== 'cancelled' &&
+            invoice.status === 'cancelled';
+        const finalized = isFinalizingDraft(existing, normalized);
+
         if (wasPaid) {
             dispatchPaidInvoiceEmails(invoice, req.user.userId);
+        }
+        if (becameOverdue) {
+            dispatchOverdueInvoiceEmails({ invoice, userId: req.user.userId });
+        }
+        if (becameCancelled) {
+            dispatchCancelledInvoiceEmails({ invoice, userId: req.user.userId });
+        }
+        if (finalized) {
+            tryAutoEmailInvoice({ invoice, userId: req.user.userId });
         }
 
         res.json(invoice);
@@ -247,7 +269,7 @@ router.put('/:id', auth, validateObjectId(), async (req, res) => {
 });
 
 // Email invoice to client
-router.post('/:id/send-email', auth, validateObjectId(), async (req, res) => {
+router.post('/:id/send-email', auth, requireEmailVerified, validateObjectId(), async (req, res) => {
     try {
         const invoice = await Invoice.findOne({
             _id: req.params.id,
@@ -258,31 +280,17 @@ router.post('/:id/send-email', auth, validateObjectId(), async (req, res) => {
             return res.status(400).json({ message: 'Finalize the invoice before emailing it to a client.' });
         }
 
-        const ctx = await loadInvoiceEmailContext(invoice, req.user.userId);
-        await ensureInvoicePublicToken(invoice);
-
-        await sendInvoiceEmail({
-            to: ctx.to,
-            customerName: ctx.customerName,
-            invoiceNumber: invoice.invoiceNumber,
-            amount: invoice.total,
-            currency: invoice.currency || 'NGN',
-            dueDate: invoice.dueDate,
-            invoiceUrl: buildInvoiceUrl(invoice),
-            businessName: ctx.businessName,
-        });
-
-        notifyOwnerInvoiceEmailed({
-            userId: req.user.userId,
+        const result = await dispatchInvoiceEmailToClient({
             invoice,
-            clientEmail: ctx.to,
-            customerName: ctx.customerName,
+            userId: req.user.userId,
+            notifyOwner: true,
+            automated: false,
         });
 
         res.json({
             message: 'Invoice email sent.',
-            sentTo: ctx.to,
-            publicUrl: buildInvoiceUrl(invoice),
+            sentTo: result.sentTo,
+            publicUrl: result.publicUrl,
         });
     } catch (err) {
         if (err.status === 400) {
@@ -294,7 +302,7 @@ router.post('/:id/send-email', auth, validateObjectId(), async (req, res) => {
 });
 
 // Send payment reminder to client
-router.post('/:id/send-reminder', auth, validateObjectId(), async (req, res) => {
+router.post('/:id/send-reminder', auth, requireEmailVerified, validateObjectId(), async (req, res) => {
     try {
         const invoice = await Invoice.findOne({
             _id: req.params.id,
@@ -351,7 +359,7 @@ router.post('/:id/send-reminder', auth, validateObjectId(), async (req, res) => 
 });
 
 // Resend receipt to client (paid invoices only)
-router.post('/:id/send-receipt', auth, validateObjectId(), async (req, res) => {
+router.post('/:id/send-receipt', auth, requireEmailVerified, validateObjectId(), async (req, res) => {
     try {
         const invoice = await Invoice.findOne({
             _id: req.params.id,
@@ -377,6 +385,13 @@ router.post('/:id/send-receipt', auth, validateObjectId(), async (req, res) => {
             businessName: ctx.businessName,
         });
 
+        notifyOwnerInvoiceReceiptSent({
+            userId: req.user.userId,
+            invoice,
+            clientEmail: ctx.to,
+            customerName: ctx.customerName,
+        });
+
         res.json({ message: 'Receipt email sent.', sentTo: ctx.to });
     } catch (err) {
         if (err.status === 400) {
@@ -388,7 +403,7 @@ router.post('/:id/send-receipt', auth, validateObjectId(), async (req, res) => {
 });
 
 // Delete invoice
-router.delete('/:id', auth, validateObjectId(), async (req, res) => {
+router.delete('/:id', auth, requireEmailVerified, validateObjectId(), async (req, res) => {
     const invoice = await Invoice.findOneAndDelete({ _id: req.params.id, userId: req.user.userId });
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
     res.json({ message: 'Invoice deleted' });

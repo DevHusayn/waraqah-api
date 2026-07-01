@@ -32,6 +32,8 @@ const businessInfoSchema = new mongoose.Schema({
     paymentAccountNumber: { type: String, default: '' },
     paymentInstructions: { type: String, default: '' },
     invoiceTemplateId: { type: String, default: 'classic' },
+    /** Email invoice to client automatically when finalized (pending). */
+    autoEmailInvoices: { type: Boolean, default: false },
 }, { timestamps: true });
 
 export default mongoose.model('BusinessInfo', businessInfoSchema);

@@ -1,6 +1,8 @@
 import { sendInvoiceEmailedOwnerNotification } from '../senders/invoiceEmailedOwnerNotification.js';
 import { sendInvoicePaidOwnerNotification } from '../senders/invoicePaidOwnerNotification.js';
 import { sendInvoiceReminderSentOwnerNotification } from '../senders/invoiceReminderSentOwnerNotification.js';
+import { sendInvoiceReceiptSentOwnerNotification } from '../senders/invoiceReceiptSentOwnerNotification.js';
+import { sendInvoiceCancelledOwnerNotification } from '../senders/invoiceCancelledOwnerNotification.js';
 import {
     loadOwnerNotificationContext,
     buildOwnerInvoiceUrl,
@@ -18,6 +20,7 @@ export function notifyOwnerInvoiceEmailed({
     invoice,
     clientEmail,
     customerName,
+    automated = false,
 }) {
     Promise.resolve()
         .then(async () => {
@@ -32,6 +35,7 @@ export function notifyOwnerInvoiceEmailed({
                 currency: invoice.currency || 'NGN',
                 dueDate: invoice.dueDate,
                 invoiceDashboardUrl: buildOwnerInvoiceUrl(invoice._id),
+                automated,
             });
         })
         .catch((err) => logOwnerNotificationFailure('invoice-emailed', err));
@@ -94,4 +98,43 @@ export function notifyOwnerInvoiceReminderSent({
             });
         })
         .catch((err) => logOwnerNotificationFailure('invoice-reminder-sent', err));
+}
+
+export function notifyOwnerInvoiceReceiptSent({ userId, invoice, clientEmail, customerName }) {
+    Promise.resolve()
+        .then(async () => {
+            const owner = await loadOwnerNotificationContext(userId);
+            await sendInvoiceReceiptSentOwnerNotification({
+                to: owner.to,
+                ownerName: owner.ownerName,
+                customerName,
+                clientEmail,
+                receiptNumber: invoice.receiptNumber,
+                invoiceNumber: invoice.invoiceNumber,
+                amountPaid: invoice.total,
+                currency: invoice.currency || 'NGN',
+                paymentDate: invoice.datePaid || new Date(),
+                invoiceDashboardUrl: buildOwnerInvoiceUrl(invoice._id),
+            });
+        })
+        .catch((err) => logOwnerNotificationFailure('invoice-receipt-sent', err));
+}
+
+export function notifyOwnerInvoiceCancelled({ userId, invoice, customerName, clientEmail }) {
+    Promise.resolve()
+        .then(async () => {
+            const owner = await loadOwnerNotificationContext(userId);
+            await sendInvoiceCancelledOwnerNotification({
+                to: owner.to,
+                ownerName: owner.ownerName,
+                customerName,
+                clientEmail,
+                invoiceNumber: invoice.invoiceNumber,
+                amount: invoice.total,
+                currency: invoice.currency || 'NGN',
+                clientNotified: Boolean(clientEmail),
+                invoiceDashboardUrl: buildOwnerInvoiceUrl(invoice._id),
+            });
+        })
+        .catch((err) => logOwnerNotificationFailure('invoice-cancelled', err));
 }

@@ -47,6 +47,7 @@ const ALLOWED_UPDATE_FIELDS = [
     'paymentAccountNumber',
     'paymentInstructions',
     'invoiceTemplateId',
+    'autoEmailInvoices',
 ];
 
 const PREMIUM_PNG_ASSET_FIELDS = [
@@ -164,6 +165,10 @@ export function pickAllowedBusinessUpdates(body, { allowPlan = false, premium = 
         updates.taxRate = sanitizeNumber(updates.taxRate, { min: 0, max: 100, fallback: 10 });
     }
 
+    if (updates.autoEmailInvoices !== undefined) {
+        updates.autoEmailInvoices = Boolean(updates.autoEmailInvoices);
+    }
+
     for (const key of ['paymentAccountName', 'paymentBankName', 'paymentAccountNumber', 'paymentInstructions']) {
         if (updates[key] !== undefined) {
             updates[key] = sanitizePlainText(updates[key], TEXT_LIMITS[key]);
@@ -226,6 +231,7 @@ export function toBusinessInfoResponse(doc) {
         paymentAccountNumber: o.paymentAccountNumber || '',
         paymentInstructions: o.paymentInstructions || '',
         invoiceTemplateId,
+        autoEmailInvoices: Boolean(o.autoEmailInvoices),
     };
 }
 
@@ -259,4 +265,5 @@ export const defaultBusinessInfoFields = {
     paymentAccountNumber: '',
     paymentInstructions: '',
     invoiceTemplateId: DEFAULT_TEMPLATE_ID,
+    autoEmailInvoices: false,
 };

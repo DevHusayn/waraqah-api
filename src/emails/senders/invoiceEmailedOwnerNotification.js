@@ -16,10 +16,12 @@ export async function sendInvoiceEmailedOwnerNotification({
     currency = 'NGN',
     dueDate,
     invoiceDashboardUrl,
+    automated = false,
 }) {
+    const prefix = automated ? '[Auto] ' : '';
     return sendEmail({
         to,
-        subject: `Invoice ${invoiceNumber} sent to ${customerName}`,
+        subject: `${prefix}Invoice ${invoiceNumber} sent to ${customerName}`,
         type: 'owner-invoice-emailed',
         react: React.createElement(InvoiceEmailedOwnerNotification, {
             ownerName,

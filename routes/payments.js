@@ -1,6 +1,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import auth from '../middleware/auth.js';
+import requireEmailVerified from '../middleware/requireEmailVerified.js';
 import User from '../models/User.js';
 import Payment from '../models/Payment.js';
 import BusinessInfo from '../models/CompanyInfo.js';
@@ -17,6 +18,11 @@ import { getOrCreatePremiumPlanCode } from '../services/paystackPlan.js';
 import { activatePremiumForUser, deactivatePremiumSubscription } from '../services/premiumActivation.js';
 import { toBusinessInfoResponse } from '../utils/businessInfoHelpers.js';
 import { isOriginAllowed } from '../utils/corsConfig.js';
+import {
+    notifyPremiumUpgradeSuccess,
+    notifyPremiumPaymentFailed,
+    notifyPremiumSubscriptionCancelled,
+} from '../src/emails/helpers/premiumNotifications.js';
 
 const router = express.Router();
 
@@ -62,6 +68,7 @@ async function fulfillPremiumPayment(payment, paystackData) {
         months: 1,
         subscription: subMeta.subscriptionCode ? subMeta : null,
     });
+    notifyPremiumUpgradeSuccess(payment.userId);
     return payment;
 }
 
@@ -160,7 +167,7 @@ router.get('/history', auth, async (req, res) => {
 });
 
 /** Start Paystack subscription checkout (first payment + recurring plan) */
-router.post('/initialize', auth, async (req, res) => {
+router.post('/initialize', auth, requireEmailVerified, async (req, res) => {
     try {
         const user = await User.findById(req.user.userId);
         if (!user) return res.status(404).json({ message: 'User not found' });
@@ -269,6 +276,7 @@ router.post('/subscription/cancel', auth, async (req, res) => {
 
         await disableSubscription(info.paystackSubscriptionCode, emailToken);
         await deactivatePremiumSubscription(req.user.userId);
+        notifyPremiumSubscriptionCancelled(req.user.userId);
 
         res.json({
             message: 'Auto-renewal cancelled. Premium remains until the end of your billing period.',
@@ -337,16 +345,21 @@ export async function paystackWebhookHandler(req, res) {
             if (info) {
                 info.subscriptionStatus = 'cancelled';
                 await info.save();
+                notifyPremiumSubscriptionCancelled(info.userId);
             }
         }
 
         if (eventType === 'invoice.payment_failed') {
             const subCode = data.subscription?.subscription_code;
             if (subCode) {
+                const info = await BusinessInfo.findOne({ paystackSubscriptionCode: subCode });
                 await BusinessInfo.updateOne(
                     { paystackSubscriptionCode: subCode },
                     { $set: { subscriptionStatus: 'attention' } }
                 );
+                if (info?.userId) {
+                    notifyPremiumPaymentFailed(info.userId);
+                }
             }
         }
 

@@ -16,6 +16,7 @@ import {
 } from '../utils/invoiceLimits.js';
 import { sendPasswordResetEmail, getEmailErrorMessage, PASSWORD_RESET_EXPIRY_MINUTES, sendEmailVerificationEmail } from '../src/emails/index.js';
 import { sendRegistrationEmails } from '../src/emails/helpers/accountEmails.js';
+import { notifyAccountSuspended } from '../src/emails/helpers/premiumNotifications.js';
 import { EMAIL_VERIFICATION_EXPIRY_HOURS } from '../src/emails/config.js';
 import { isStrongPassword, PASSWORD_REQUIREMENTS_MESSAGE } from '../utils/passwordValidation.js';
 import { createPasswordResetToken, hashPasswordResetToken } from '../utils/resetToken.js';
@@ -75,8 +76,12 @@ router.patch('/admin/users/:id/status', auth, validateObjectId(), async (req, re
         if (req.user.userId === req.params.id) return res.status(400).json({ message: 'You cannot change your own status.' });
         const user = await User.findById(req.params.id);
         if (!user) return res.status(404).json({ message: 'User not found' });
-        user.status = user.status === 'active' ? 'suspended' : 'active';
+        const wasActive = user.status === 'active';
+        user.status = wasActive ? 'suspended' : 'active';
         await user.save();
+        if (wasActive) {
+            notifyAccountSuspended(user);
+        }
         res.json({ message: 'User status updated', status: user.status });
     } catch (err) {
         return sendServerError(res, err);
@@ -275,11 +280,19 @@ router.post('/login', loginLimiter, async (req, res) => {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
+        if (user.emailVerified === false) {
+            return res.status(403).json({
+                message: 'Please verify your email before signing in. Check your inbox or request a new verification link.',
+                code: 'EMAIL_NOT_VERIFIED',
+            });
+        }
+
         // Reset failed attempts and lock
         user.failedLoginAttempts = 0;
         user.lockUntil = undefined;
         user.lastLogin = new Date();
         await user.save();
+
         const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRY });
         setAuthCookies(res, token);
         res.json({

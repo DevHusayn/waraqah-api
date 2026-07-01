@@ -21,6 +21,9 @@ export function validateEnv() {
         if (process.env.ALLOW_DEV_PLAN === 'true') {
             errors.push('ALLOW_DEV_PLAN must be false in production.');
         }
+        if (!process.env.RESEND_API_KEY?.trim()) {
+            errors.push('RESEND_API_KEY is required in production for transactional email.');
+        }
     } else if (process.env.ALLOW_DEV_PLAN === 'true') {
         warnings.push('ALLOW_DEV_PLAN is enabled — do not use in production.');
     }
