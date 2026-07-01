@@ -12,6 +12,8 @@ import clientRoutes from './routes/clients.js';
 import businessInfoRoutes from './routes/companyInfo.js';
 import productRoutes from './routes/products.js';
 import paymentRoutes, { paystackWebhookHandler } from './routes/payments.js';
+import publicRoutes from './routes/publicInvoices.js';
+import cronRoutes from './routes/cron.js';
 import { buildCorsOptions } from './utils/corsConfig.js';
 import { assertEnvOrExit } from './utils/envValidation.js';
 import { globalApiLimiter, webhookLimiter } from './middleware/rateLimits.js';
@@ -64,6 +66,10 @@ app.use(async (req, res, next) => {
 });
 
 app.use('/api', globalApiLimiter);
+
+app.use('/api/public', publicRoutes);
+app.use('/api/cron', cronRoutes);
+
 app.use('/api', csrfProtection);
 
 app.use('/api/auth', authRoutes);
@@ -84,6 +90,7 @@ app.get('/api/health', (req, res) => {
 if (process.env.VERCEL !== '1') {
     connectDB()
         .then(() => import('./recurringAutomation.js'))
+        .then(() => import('./paymentReminderAutomation.js'))
         .catch((err) => console.error('Startup error:', err));
 
     app.listen(PORT, () => {

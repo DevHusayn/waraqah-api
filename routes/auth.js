@@ -14,7 +14,9 @@ import {
     getInvoiceUsageMapForUsers,
     resetFreeInvoiceUsageForUser,
 } from '../utils/invoiceLimits.js';
-import { sendPasswordResetEmail, getEmailErrorMessage, PASSWORD_RESET_EXPIRY_MINUTES } from '../utils/email.js';
+import { sendPasswordResetEmail, getEmailErrorMessage, PASSWORD_RESET_EXPIRY_MINUTES, sendEmailVerificationEmail } from '../src/emails/index.js';
+import { sendRegistrationEmails } from '../src/emails/helpers/accountEmails.js';
+import { EMAIL_VERIFICATION_EXPIRY_HOURS } from '../src/emails/config.js';
 import { isStrongPassword, PASSWORD_REQUIREMENTS_MESSAGE } from '../utils/passwordValidation.js';
 import { createPasswordResetToken, hashPasswordResetToken } from '../utils/resetToken.js';
 import { sendServerError } from '../utils/apiError.js';
@@ -39,20 +41,23 @@ const FORGOT_PASSWORD_RESPONSE = {
     message: 'If an account exists for that email, we sent a link to reset your password.',
 };
 
-/** Minimum time between reset emails to the same account (Gmail rate limits) */
+/** Minimum time between reset emails to the same account */
 const RESET_EMAIL_COOLDOWN_MS = 2 * 60 * 1000;
+const VERIFICATION_EMAIL_COOLDOWN_MS = 2 * 60 * 1000;
 
 function normalizeEmail(email) {
     return String(email || '').trim().toLowerCase();
 }
 
 function toPublicUser(user, extra = {}) {
+    const emailVerified = user.emailVerified === undefined ? true : Boolean(user.emailVerified);
     return {
         id: user._id,
         email: user.email,
         name: user.name,
         isAdmin: user.isAdmin,
         status: user.status,
+        emailVerified,
         ...extra,
     };
 }
@@ -200,12 +205,23 @@ router.post('/register', registerLimiter, async (req, res) => {
         if (existing) return res.status(409).json({ message: 'Email already registered' });
 
         const hash = await bcrypt.hash(password, 10);
-        const user = await User.create({ email, password: hash, name });
+        const verificationToken = createPasswordResetToken();
+        const user = await User.create({
+            email,
+            password: hash,
+            name,
+            emailVerified: false,
+            emailVerificationToken: hashPasswordResetToken(verificationToken),
+            emailVerificationExpires: Date.now() + EMAIL_VERIFICATION_EXPIRY_HOURS * 60 * 60 * 1000,
+            emailVerificationSentAt: new Date(),
+        });
         await BusinessInfo.create({
             userId: user._id,
             ...defaultBusinessInfoFields,
             ...sanitizedBusinessInfo,
         });
+
+        sendRegistrationEmails({ user, verificationToken });
 
         const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRY });
         setAuthCookies(res, token);
@@ -379,6 +395,77 @@ router.post('/reset-password/:token', resetPasswordLimiter, async (req, res) => 
         res.json({ message: 'Your password has been updated. You can sign in now.' });
     } catch (err) {
         console.error('Reset-password error:', err);
+        res.status(500).json({ message: 'Something went wrong. Please try again.' });
+    }
+});
+
+// Verify email address
+router.post('/verify-email/:token', async (req, res) => {
+    try {
+        const tokenHash = hashPasswordResetToken(req.params.token);
+        const user = await User.findOne({
+            emailVerificationToken: tokenHash,
+            emailVerificationExpires: { $gt: Date.now() },
+        });
+
+        if (!user) {
+            return res.status(400).json({
+                message: 'This verification link is invalid or has expired. Request a new one from your account settings.',
+            });
+        }
+
+        user.emailVerified = true;
+        user.emailVerificationToken = undefined;
+        user.emailVerificationExpires = undefined;
+        await user.save();
+
+        res.json({ message: 'Your email has been verified.', emailVerified: true });
+    } catch (err) {
+        console.error('Verify-email error:', err);
+        res.status(500).json({ message: 'Something went wrong. Please try again.' });
+    }
+});
+
+// Resend verification email (authenticated)
+router.post('/resend-verification', auth, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.userId);
+        if (!user) return res.status(404).json({ message: 'User not found' });
+
+        if (user.emailVerified !== false) {
+            return res.status(400).json({ message: 'This email address is already verified.' });
+        }
+
+        const lastSent = user.emailVerificationSentAt?.getTime() || 0;
+        const cooldownLeft = VERIFICATION_EMAIL_COOLDOWN_MS - (Date.now() - lastSent);
+        if (cooldownLeft > 0) {
+            return res.status(429).json({
+                message: 'Please wait a few minutes before requesting another verification email.',
+            });
+        }
+
+        const verificationToken = createPasswordResetToken();
+        const verificationUrl = `${getFrontendBaseUrl()}/verify-email/${verificationToken}`;
+
+        try {
+            await sendEmailVerificationEmail({
+                to: user.email,
+                userName: user.name,
+                verificationUrl,
+            });
+        } catch (mailErr) {
+            console.error('Resend-verification email error:', mailErr);
+            return res.status(503).json({ message: getEmailErrorMessage(mailErr) });
+        }
+
+        user.emailVerificationToken = hashPasswordResetToken(verificationToken);
+        user.emailVerificationExpires = Date.now() + EMAIL_VERIFICATION_EXPIRY_HOURS * 60 * 60 * 1000;
+        user.emailVerificationSentAt = new Date();
+        await user.save();
+
+        res.json({ message: 'Verification email sent. Check your inbox.' });
+    } catch (err) {
+        console.error('Resend-verification error:', err);
         res.status(500).json({ message: 'Something went wrong. Please try again.' });
     }
 });

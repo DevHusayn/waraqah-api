@@ -17,6 +17,8 @@ export const BRAND = {
 };
 
 export const PASSWORD_RESET_EXPIRY_MINUTES = 15;
+export const EMAIL_VERIFICATION_EXPIRY_HOURS = 24;
+export const PAYMENT_REMINDER_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
 
 export function getEmailFromAddress() {
     return process.env.EMAIL_FROM?.trim() || 'Waraqah <notifications@mywaraqah.com>';

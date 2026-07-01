@@ -15,6 +15,11 @@ const userSchema = new mongoose.Schema({
     passwordResetToken: { type: String },
     passwordResetExpires: { type: Date },
     passwordResetRequestedAt: { type: Date },
+    /** Legacy accounts without this field are treated as verified in route logic. */
+    emailVerified: { type: Boolean, default: true },
+    emailVerificationToken: { type: String },
+    emailVerificationExpires: { type: Date },
+    emailVerificationSentAt: { type: Date },
 }, { timestamps: true });
 
 export default mongoose.model('User', userSchema);

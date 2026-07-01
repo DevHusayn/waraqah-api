@@ -5,6 +5,8 @@ const invoiceSchema = new mongoose.Schema({
     clientId: { type: mongoose.Schema.Types.ObjectId, ref: 'Client', required: false, default: null },
     invoiceNumber: String,
     receiptNumber: String,
+    /** Unguessable token for public client invoice view (no login). */
+    publicToken: { type: String, unique: true, sparse: true, index: true },
     date: String,
     dueDate: String,
     items: [
@@ -36,6 +38,7 @@ const invoiceSchema = new mongoose.Schema({
     isRecurring: { type: Boolean, default: false },
     recurringFrequency: { type: String, enum: ['weekly', 'bi-weekly', 'monthly', 'quarterly', 'yearly'], default: null },
     recurringEndDate: { type: String, default: null },
+    lastPaymentReminderAt: { type: Date, default: null },
 }, { timestamps: true });
 
 export default mongoose.model('Invoice', invoiceSchema);

@@ -6,4 +6,5 @@ export {
     sendPasswordResetEmail,
     getEmailErrorMessage,
     isEmailConfigured,
+    PASSWORD_RESET_EXPIRY_MINUTES,
 } from '../src/emails/index.js';

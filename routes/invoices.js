@@ -15,8 +15,79 @@ import {
     isFinalizingDraft,
     isDraftStatus,
 } from '../utils/invoiceValidation.js';
+import {
+    sendInvoiceEmail,
+    sendReceiptEmail,
+    sendPaymentConfirmationEmail,
+    sendPaymentReminderEmail,
+    getEmailErrorMessage,
+} from '../src/emails/index.js';
+import { PAYMENT_REMINDER_COOLDOWN_MS } from '../src/emails/config.js';
+import {
+    loadInvoiceEmailContext,
+    buildInvoiceUrl,
+    buildReceiptUrl,
+    formatPaymentMethod,
+    computeDaysUntilDue,
+} from '../src/emails/helpers/invoiceContext.js';
+import { attachPublicTokenIfNeeded, ensureInvoicePublicToken } from '../utils/invoicePublicToken.js';
+import {
+    notifyOwnerInvoiceEmailed,
+    notifyOwnerInvoicePaid,
+    notifyOwnerInvoiceReminderSent,
+} from '../src/emails/helpers/ownerNotifications.js';
 
 const router = express.Router();
+
+const PAID = 'paid';
+
+async function dispatchPaidInvoiceEmails(invoice, userId) {
+    try {
+        await ensureInvoicePublicToken(invoice);
+        const ctx = await loadInvoiceEmailContext(invoice, userId);
+        const invoiceUrl = buildInvoiceUrl(invoice);
+        const receiptUrl = buildReceiptUrl(invoice);
+
+        await Promise.allSettled([
+            sendPaymentConfirmationEmail({
+                to: ctx.to,
+                customerName: ctx.customerName,
+                invoiceNumber: invoice.invoiceNumber,
+                amountPaid: invoice.total,
+                currency: invoice.currency || 'NGN',
+                paymentDate: invoice.datePaid || new Date(),
+                paymentMethod: formatPaymentMethod(invoice.paymentMethod),
+                businessName: ctx.businessName,
+                receiptUrl,
+            }),
+            sendReceiptEmail({
+                to: ctx.to,
+                customerName: ctx.customerName,
+                receiptNumber: invoice.receiptNumber,
+                amountPaid: invoice.total,
+                currency: invoice.currency || 'NGN',
+                paymentDate: invoice.datePaid || new Date(),
+                businessName: ctx.businessName,
+            }),
+        ]).then((results) => {
+            results.forEach((result, index) => {
+                if (result.status === 'rejected') {
+                    const type = index === 0 ? 'payment-confirmation' : 'receipt';
+                    console.error(`[Waraqah Email] Paid invoice ${type} failed:`, result.reason);
+                }
+            });
+        });
+
+        notifyOwnerInvoicePaid({
+            userId,
+            invoice,
+            customerName: ctx.customerName,
+            paymentMethod: formatPaymentMethod(invoice.paymentMethod),
+        });
+    } catch (err) {
+        console.error('[Waraqah Email] Paid invoice emails skipped:', err.message);
+    }
+}
 
 const numberGenerators = {
     getNextInvoiceNumber,
@@ -35,7 +106,18 @@ router.get('/usage', auth, async (req, res) => {
 
 // Get all invoices for user
 router.get('/', auth, async (req, res) => {
-    const invoices = await Invoice.find({ userId: req.user.userId });
+    let invoices = await Invoice.find({ userId: req.user.userId });
+
+    await Promise.all(
+        invoices
+            .filter((inv) => inv.status !== 'draft' && !inv.publicToken)
+            .map((inv) => ensureInvoicePublicToken(inv))
+    );
+
+    if (invoices.some((inv) => inv.status !== 'draft' && !inv.publicToken)) {
+        invoices = await Invoice.find({ userId: req.user.userId });
+    }
+
     res.json(invoices);
 });
 
@@ -83,6 +165,7 @@ router.post('/', auth, async (req, res) => {
             req.user.userId,
             numberGenerators
         );
+        attachPublicTokenIfNeeded(payload);
         const invoice = await Invoice.create({
             ...payload,
             userId: req.user.userId,
@@ -129,11 +212,21 @@ router.put('/:id', auth, validateObjectId(), async (req, res) => {
             numberGenerators
         );
 
+        attachPublicTokenIfNeeded(payload, existing);
+
         const invoice = await Invoice.findOneAndUpdate(
             { _id: req.params.id, userId: req.user.userId },
             payload,
             { new: true }
         );
+
+        const wasPaid =
+            existing.status !== PAID &&
+            invoice.status === PAID;
+        if (wasPaid) {
+            dispatchPaidInvoiceEmails(invoice, req.user.userId);
+        }
+
         res.json(invoice);
     } catch (err) {
         if (reserved) {
@@ -150,6 +243,147 @@ router.put('/:id', auth, validateObjectId(), async (req, res) => {
             });
         }
         res.status(500).json({ message: err.message || 'Could not update invoice' });
+    }
+});
+
+// Email invoice to client
+router.post('/:id/send-email', auth, validateObjectId(), async (req, res) => {
+    try {
+        const invoice = await Invoice.findOne({
+            _id: req.params.id,
+            userId: req.user.userId,
+        });
+        if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
+        if (invoice.status === 'draft') {
+            return res.status(400).json({ message: 'Finalize the invoice before emailing it to a client.' });
+        }
+
+        const ctx = await loadInvoiceEmailContext(invoice, req.user.userId);
+        await ensureInvoicePublicToken(invoice);
+
+        await sendInvoiceEmail({
+            to: ctx.to,
+            customerName: ctx.customerName,
+            invoiceNumber: invoice.invoiceNumber,
+            amount: invoice.total,
+            currency: invoice.currency || 'NGN',
+            dueDate: invoice.dueDate,
+            invoiceUrl: buildInvoiceUrl(invoice),
+            businessName: ctx.businessName,
+        });
+
+        notifyOwnerInvoiceEmailed({
+            userId: req.user.userId,
+            invoice,
+            clientEmail: ctx.to,
+            customerName: ctx.customerName,
+        });
+
+        res.json({
+            message: 'Invoice email sent.',
+            sentTo: ctx.to,
+            publicUrl: buildInvoiceUrl(invoice),
+        });
+    } catch (err) {
+        if (err.status === 400) {
+            return res.status(400).json({ message: err.message });
+        }
+        console.error('Send invoice email error:', err);
+        return res.status(503).json({ message: getEmailErrorMessage(err) });
+    }
+});
+
+// Send payment reminder to client
+router.post('/:id/send-reminder', auth, validateObjectId(), async (req, res) => {
+    try {
+        const invoice = await Invoice.findOne({
+            _id: req.params.id,
+            userId: req.user.userId,
+        });
+        if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
+        if (!['pending', 'overdue'].includes(invoice.status)) {
+            return res.status(400).json({ message: 'Reminders can only be sent for pending or overdue invoices.' });
+        }
+
+        const lastReminder = invoice.lastPaymentReminderAt?.getTime() || 0;
+        if (Date.now() - lastReminder < PAYMENT_REMINDER_COOLDOWN_MS) {
+            return res.status(429).json({
+                message: 'A reminder was sent recently. Please wait before sending another.',
+            });
+        }
+
+        const ctx = await loadInvoiceEmailContext(invoice, req.user.userId);
+        await ensureInvoicePublicToken(invoice);
+        const daysUntilDue = computeDaysUntilDue(invoice.dueDate);
+
+        await sendPaymentReminderEmail({
+            to: ctx.to,
+            customerName: ctx.customerName,
+            invoiceNumber: invoice.invoiceNumber,
+            amountOutstanding: invoice.total,
+            currency: invoice.currency || 'NGN',
+            dueDate: invoice.dueDate,
+            daysUntilDue,
+            invoiceUrl: buildInvoiceUrl(invoice),
+            businessName: ctx.businessName,
+        });
+
+        invoice.lastPaymentReminderAt = new Date();
+        await invoice.save();
+
+        notifyOwnerInvoiceReminderSent({
+            userId: req.user.userId,
+            invoice,
+            clientEmail: ctx.to,
+            customerName: ctx.customerName,
+            daysUntilDue,
+            automated: false,
+        });
+
+        res.json({ message: 'Payment reminder sent.', sentTo: ctx.to });
+    } catch (err) {
+        if (err.status === 400) {
+            return res.status(400).json({ message: err.message });
+        }
+        console.error('Send payment reminder error:', err);
+        return res.status(503).json({ message: getEmailErrorMessage(err) });
+    }
+});
+
+// Resend receipt to client (paid invoices only)
+router.post('/:id/send-receipt', auth, validateObjectId(), async (req, res) => {
+    try {
+        const invoice = await Invoice.findOne({
+            _id: req.params.id,
+            userId: req.user.userId,
+        });
+        if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
+        if (invoice.status !== PAID) {
+            return res.status(400).json({ message: 'Receipts can only be sent for paid invoices.' });
+        }
+        if (!invoice.receiptNumber) {
+            return res.status(400).json({ message: 'This invoice does not have a receipt number.' });
+        }
+
+        const ctx = await loadInvoiceEmailContext(invoice, req.user.userId);
+
+        await sendReceiptEmail({
+            to: ctx.to,
+            customerName: ctx.customerName,
+            receiptNumber: invoice.receiptNumber,
+            amountPaid: invoice.total,
+            currency: invoice.currency || 'NGN',
+            paymentDate: invoice.datePaid || new Date(),
+            businessName: ctx.businessName,
+        });
+
+        res.json({ message: 'Receipt email sent.', sentTo: ctx.to });
+    } catch (err) {
+        if (err.status === 400) {
+            return res.status(400).json({ message: err.message });
+        }
+        console.error('Send receipt email error:', err);
+        return res.status(503).json({ message: getEmailErrorMessage(err) });
     }
 });
 
