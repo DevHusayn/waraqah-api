@@ -24,6 +24,15 @@ export async function loadOwnerNotificationContext(userId) {
     };
 }
 
-export function buildOwnerInvoiceUrl(invoiceId) {
-    return `${getFrontendBaseUrl()}/invoices/${invoiceId}`;
+export function buildOwnerInvoiceUrl(invoiceOrId, options = {}) {
+    const id = invoiceOrId?._id ?? invoiceOrId?.id ?? invoiceOrId;
+    if (!id) {
+        return `${getFrontendBaseUrl()}/invoices`;
+    }
+
+    const url = `${getFrontendBaseUrl()}/invoices/${String(id)}`;
+    if (options.view === 'receipt') {
+        return `${url}?view=receipt`;
+    }
+    return url;
 }

@@ -1,12 +1,16 @@
 import mongoose from 'mongoose';
 
-
-
-
 const userSchema = new mongoose.Schema({
     email: { type: String, required: true, unique: true },
-    password: { type: String, required: true },
+    password: { type: String, required: false },
     name: { type: String },
+    authProvider: {
+        type: String,
+        enum: ['local', 'google', 'apple'],
+        default: 'local',
+    },
+    googleId: { type: String, unique: true, sparse: true },
+    appleId: { type: String, unique: true, sparse: true },
     isAdmin: { type: Boolean, default: false },
     status: { type: String, enum: ['active', 'suspended'], default: 'active' },
     lastLogin: { type: Date },

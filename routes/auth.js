@@ -35,6 +35,12 @@ import {
     sanitizeNumber,
 } from '../utils/sanitize.js';
 import { setAuthCookies, clearAuthCookies, getTokenFromRequest, ensureCsrfCookie } from '../utils/authCookie.js';
+import {
+    verifyGoogleCredential,
+    verifyAppleCredential,
+    findOrCreateOAuthUser,
+    getOAuthConfig,
+} from '../services/oauth.js';
 
 const router = express.Router();
 
@@ -66,6 +72,22 @@ function toPublicUser(user, extra = {}) {
 function getFrontendBaseUrl() {
     const url = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
     return url;
+}
+
+async function completeAuthSession(res, user) {
+    user.failedLoginAttempts = 0;
+    user.lockUntil = undefined;
+    user.lastLogin = new Date();
+    await user.save();
+
+    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRY });
+    const csrfToken = setAuthCookies(res, token);
+
+    return {
+        user: toPublicUser(user, { lastLogin: user.lastLogin }),
+        token,
+        csrfToken,
+    };
 }
 
 // Admin: Suspend/Activate user
@@ -228,13 +250,9 @@ router.post('/register', registerLimiter, async (req, res) => {
 
         sendRegistrationEmails({ user, verificationToken });
 
-        const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRY });
-        const csrfToken = setAuthCookies(res, token);
         res.status(201).json({
-            message: 'User registered',
-            user: toPublicUser(user),
-            token,
-            csrfToken,
+            message: 'Account created. Check your email to verify your address before signing in.',
+            email: user.email,
         });
     } catch (err) {
         if (err.status === 400) {
@@ -267,6 +285,12 @@ router.post('/login', loginLimiter, async (req, res) => {
         }
 
         // Check password
+        if (!user.password) {
+            return res.status(401).json({
+                message: 'This account uses Google or Apple sign-in. Continue with that provider below.',
+            });
+        }
+
         const match = await bcrypt.compare(password, user.password);
         if (!match) {
             user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
@@ -288,19 +312,8 @@ router.post('/login', loginLimiter, async (req, res) => {
             });
         }
 
-        // Reset failed attempts and lock
-        user.failedLoginAttempts = 0;
-        user.lockUntil = undefined;
-        user.lastLogin = new Date();
-        await user.save();
-
-        const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRY });
-        const csrfToken = setAuthCookies(res, token);
-        res.json({
-            user: toPublicUser(user, { lastLogin: user.lastLogin }),
-            token,
-            csrfToken,
-        });
+        const session = await completeAuthSession(res, user);
+        res.json(session);
     } catch (err) {
         return sendServerError(res, err);
     }
@@ -486,6 +499,111 @@ router.post('/resend-verification', auth, async (req, res) => {
     } catch (err) {
         console.error('Resend-verification error:', err);
         res.status(500).json({ message: 'Something went wrong. Please try again.' });
+    }
+});
+
+const RESEND_VERIFICATION_RESPONSE = {
+    message: 'If an unverified account exists for that email, we sent a new verification link.',
+};
+
+router.post('/resend-verification-email', forgotPasswordLimiter, async (req, res) => {
+    try {
+        const email = normalizeEmail(req.body.email);
+        if (!email) {
+            return res.status(400).json({ message: 'Email is required.' });
+        }
+
+        const user = await User.findOne({ email });
+        if (!user || user.emailVerified !== false) {
+            return res.status(200).json(RESEND_VERIFICATION_RESPONSE);
+        }
+
+        const lastSent = user.emailVerificationSentAt?.getTime() || 0;
+        const cooldownLeft = VERIFICATION_EMAIL_COOLDOWN_MS - (Date.now() - lastSent);
+        if (cooldownLeft > 0) {
+            return res.status(429).json({
+                message: 'Please wait a few minutes before requesting another verification email.',
+            });
+        }
+
+        const verificationToken = createPasswordResetToken();
+        const verificationUrl = `${getFrontendBaseUrl()}/verify-email/${verificationToken}`;
+
+        try {
+            await sendEmailVerificationEmail({
+                to: user.email,
+                userName: user.name,
+                verificationUrl,
+            });
+        } catch (mailErr) {
+            console.error('Resend-verification-email error:', mailErr);
+            return res.status(503).json({ message: getEmailErrorMessage(mailErr) });
+        }
+
+        user.emailVerificationToken = hashPasswordResetToken(verificationToken);
+        user.emailVerificationExpires = Date.now() + EMAIL_VERIFICATION_EXPIRY_HOURS * 60 * 60 * 1000;
+        user.emailVerificationSentAt = new Date();
+        await user.save();
+
+        res.status(200).json(RESEND_VERIFICATION_RESPONSE);
+    } catch (err) {
+        console.error('Resend-verification-email error:', err);
+        res.status(500).json({ message: 'Something went wrong. Please try again.' });
+    }
+});
+
+router.get('/oauth-config', (req, res) => {
+    res.json(getOAuthConfig());
+});
+
+router.post('/google', loginLimiter, async (req, res) => {
+    try {
+        const credential = req.body?.credential;
+        if (!credential) {
+            return res.status(400).json({ message: 'Google credential is required.' });
+        }
+
+        const profile = await verifyGoogleCredential(credential);
+        const user = await findOrCreateOAuthUser(profile);
+        const session = await completeAuthSession(res, user);
+        res.json(session);
+    } catch (err) {
+        if (err.status === 503) {
+            return res.status(503).json({ message: err.message });
+        }
+        if (err.status === 403 || err.status === 400) {
+            return res.status(err.status).json({ message: err.message });
+        }
+        console.error('Google sign-in error:', err);
+        return res.status(401).json({ message: 'Google sign-in failed. Please try again.' });
+    }
+});
+
+router.post('/apple', loginLimiter, async (req, res) => {
+    try {
+        const identityToken = req.body?.identityToken;
+        const name = sanitizePlainText(req.body?.name, 120);
+        if (!identityToken) {
+            return res.status(400).json({ message: 'Apple identity token is required.' });
+        }
+
+        const profile = await verifyAppleCredential(identityToken);
+        if (name && !profile.name) {
+            profile.name = name;
+        }
+
+        const user = await findOrCreateOAuthUser(profile);
+        const session = await completeAuthSession(res, user);
+        res.json(session);
+    } catch (err) {
+        if (err.status === 503) {
+            return res.status(503).json({ message: err.message });
+        }
+        if (err.status === 403 || err.status === 400) {
+            return res.status(err.status).json({ message: err.message });
+        }
+        console.error('Apple sign-in error:', err);
+        return res.status(401).json({ message: 'Apple sign-in failed. Please try again.' });
     }
 });
 

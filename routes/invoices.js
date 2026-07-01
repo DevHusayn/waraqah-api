@@ -194,6 +194,16 @@ router.post('/', auth, requireEmailVerified, async (req, res) => {
     }
 });
 
+// Get single invoice
+router.get('/:id', auth, validateObjectId(), async (req, res) => {
+    const invoice = await Invoice.findOne({
+        _id: req.params.id,
+        userId: req.user.userId,
+    });
+    if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
+    res.json(invoice);
+});
+
 // Update invoice
 router.put('/:id', auth, requireEmailVerified, validateObjectId(), async (req, res) => {
     let reserved = false;
