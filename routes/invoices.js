@@ -37,6 +37,7 @@ import {
     computeDaysUntilDue,
 } from '../src/emails/helpers/invoiceContext.js';
 import { attachPublicTokenIfNeeded, ensureInvoicePublicToken } from '../utils/invoicePublicToken.js';
+import { syncOverdueInvoicesForUser } from '../utils/invoiceOverdue.js';
 import asyncHandler from '../middleware/asyncHandler.js';
 
 const router = express.Router();
@@ -90,18 +91,8 @@ router.get('/usage', auth, async (req, res) => {
 
 // Get all invoices for user
 router.get('/', auth, asyncHandler(async (req, res) => {
-    let invoices = await Invoice.find({ userId: req.user.userId });
-
-    await Promise.all(
-        invoices
-            .filter((inv) => inv.status !== 'draft' && !inv.publicToken)
-            .map((inv) => ensureInvoicePublicToken(inv))
-    );
-
-    if (invoices.some((inv) => inv.status !== 'draft' && !inv.publicToken)) {
-        invoices = await Invoice.find({ userId: req.user.userId });
-    }
-
+    await syncOverdueInvoicesForUser(req.user.userId);
+    const invoices = await Invoice.find({ userId: req.user.userId }).lean();
     res.json(invoices);
 }));
 

@@ -47,4 +47,7 @@ const invoiceSchema = new mongoose.Schema({
     clientInvoiceEmailedAt: { type: Date, default: null },
 }, { timestamps: true });
 
+invoiceSchema.index({ userId: 1, createdAt: -1 });
+invoiceSchema.index({ userId: 1, status: 1, dueDate: 1 });
+
 export default mongoose.model('Invoice', invoiceSchema);

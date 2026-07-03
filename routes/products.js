@@ -7,7 +7,7 @@ import asyncHandler from '../middleware/asyncHandler.js';
 const router = express.Router();
 
 router.get('/', auth, asyncHandler(async (req, res) => {
-    const products = await Product.find({ userId: req.user.userId }).sort({ name: 1 });
+    const products = await Product.find({ userId: req.user.userId }).sort({ name: 1 }).lean();
     res.json(products);
 }));
 

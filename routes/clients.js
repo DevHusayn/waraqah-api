@@ -8,7 +8,7 @@ import asyncHandler from '../middleware/asyncHandler.js';
 const router = express.Router();
 
 router.get('/', auth, asyncHandler(async (req, res) => {
-    const clients = await Client.find({ userId: req.user.userId });
+    const clients = await Client.find({ userId: req.user.userId }).lean();
     res.json(clients);
 }));
 
