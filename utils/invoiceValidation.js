@@ -92,7 +92,12 @@ export function sanitizeInvoicePayload(body) {
 
     data.notes = data.notes !== undefined ? sanitizePlainText(data.notes, 2000) : undefined;
     data.date = data.date !== undefined ? sanitizePlainText(data.date, 32) : undefined;
-    data.dueDate = data.dueDate !== undefined ? sanitizePlainText(data.dueDate, 32) : undefined;
+    data.dueDate =
+        data.dueDate !== undefined
+            ? data.dueDate === null || data.dueDate === ''
+                ? null
+                : sanitizePlainText(data.dueDate, 32)
+            : undefined;
     data.datePaid = data.datePaid !== undefined ? sanitizePlainText(data.datePaid, 32) : undefined;
     data.recurringEndDate =
         data.recurringEndDate !== undefined ? sanitizePlainText(data.recurringEndDate, 32) : undefined;

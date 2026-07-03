@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button, Section, Text } from '@react-email/components';
-import EmailLayout, { emailStyles } from '../layouts/EmailLayout.js';
+import ClientEmailLayout, { createClientEmailStyles } from '../layouts/ClientEmailLayout.js';
+import { buildClientEmailBranding } from '../helpers/clientEmailBranding.js';
 import { formatCurrency, formatDate, formatDaysUntilDue } from '../formatters.js';
 
 /**
@@ -13,6 +14,7 @@ import { formatCurrency, formatDate, formatDaysUntilDue } from '../formatters.js
  * @param {number} props.daysUntilDue - Days remaining until due (0 = due today)
  * @param {string} props.invoiceUrl - Link to view/pay the invoice
  * @param {string} props.businessName - Sender business name
+ * @param {object} [props.branding] - Business branding tokens
  */
 export default function PaymentReminderEmail({
     customerName,
@@ -23,7 +25,10 @@ export default function PaymentReminderEmail({
     daysUntilDue,
     invoiceUrl,
     businessName,
+    branding,
 }) {
+    const brand = branding || buildClientEmailBranding(null, businessName);
+    const emailStyles = createClientEmailStyles(brand);
     const greetingName = customerName?.trim() || 'there';
     const dueLabel = formatDaysUntilDue(daysUntilDue);
     const isOverdue = Number(daysUntilDue) < 0;
@@ -32,15 +37,16 @@ export default function PaymentReminderEmail({
         : `Payment is due in ${dueLabel}.`;
 
     return React.createElement(
-        EmailLayout,
+        ClientEmailLayout,
         {
             preview: `Reminder: invoice ${invoiceNumber} — ${formatCurrency(amountOutstanding, currency)} outstanding, due ${formatDate(dueDate)}.`,
+            branding: brand,
         },
         React.createElement(Text, { style: emailStyles.heading }, 'Payment reminder'),
         React.createElement(
             Text,
             { style: emailStyles.paragraph },
-            `Hi ${greetingName}, this is a friendly reminder from ${businessName} about an outstanding invoice.`,
+            `Hi ${greetingName}, this is a friendly reminder from ${brand.businessName} about an outstanding invoice.`,
         ),
         React.createElement(
             Text,

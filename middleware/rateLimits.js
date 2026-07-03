@@ -1,5 +1,6 @@
 import rateLimit from 'express-rate-limit';
 import { MongoRateLimitStore } from './rateLimitStore.js';
+import { isProduction } from '../utils/envValidation.js';
 
 function clientIp(req) {
     const forwarded = req.headers['x-forwarded-for'];
@@ -10,16 +11,22 @@ function clientIp(req) {
 }
 
 function buildLimiter({ windowMs, max, message, prefix }) {
-    return rateLimit({
+    const options = {
         windowMs,
         max,
         standardHeaders: true,
         legacyHeaders: false,
         message: { message },
         keyGenerator: (req) => `${prefix}:${clientIp(req)}`,
-        store: new MongoRateLimitStore(),
         skip: (req) => req.method === 'OPTIONS',
-    });
+    };
+
+    // Avoid an extra Mongo round-trip on every request during local dev.
+    if (isProduction()) {
+        options.store = new MongoRateLimitStore();
+    }
+
+    return rateLimit(options);
 }
 
 export const globalApiLimiter = buildLimiter({

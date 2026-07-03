@@ -32,59 +32,59 @@ function formatDateLabel(date) {
     });
 }
 
-export function notifyPremiumUpgradeSuccess(userId) {
-    Promise.resolve()
-        .then(async () => {
-            const ctx = await loadUserContext(userId);
-            if (!ctx) return;
-            await sendPremiumUpgradeSuccessEmail({
-                to: ctx.to,
-                userName: ctx.userName,
-                amount: PREMIUM_AMOUNT_NGN,
-                currency: 'NGN',
-                renewsAt: formatDateLabel(ctx.premiumUntil),
-            });
-        })
-        .catch((err) => logFailure('Premium upgrade success', err));
+export async function notifyPremiumUpgradeSuccess(userId) {
+    try {
+        const ctx = await loadUserContext(userId);
+        if (!ctx) return;
+        await sendPremiumUpgradeSuccessEmail({
+            to: ctx.to,
+            userName: ctx.userName,
+            amount: PREMIUM_AMOUNT_NGN,
+            currency: 'NGN',
+            renewsAt: formatDateLabel(ctx.premiumUntil),
+        });
+    } catch (err) {
+        logFailure('Premium upgrade success', err);
+    }
 }
 
-export function notifyPremiumPaymentFailed(userId) {
-    Promise.resolve()
-        .then(async () => {
-            const ctx = await loadUserContext(userId);
-            if (!ctx) return;
-            await sendPremiumPaymentFailedEmail({
-                to: ctx.to,
-                userName: ctx.userName,
-                amount: PREMIUM_AMOUNT_NGN,
-                currency: 'NGN',
-            });
-        })
-        .catch((err) => logFailure('Premium payment failed', err));
+export async function notifyPremiumPaymentFailed(userId) {
+    try {
+        const ctx = await loadUserContext(userId);
+        if (!ctx) return;
+        await sendPremiumPaymentFailedEmail({
+            to: ctx.to,
+            userName: ctx.userName,
+            amount: PREMIUM_AMOUNT_NGN,
+            currency: 'NGN',
+        });
+    } catch (err) {
+        logFailure('Premium payment failed', err);
+    }
 }
 
-export function notifyPremiumSubscriptionCancelled(userId) {
-    Promise.resolve()
-        .then(async () => {
-            const ctx = await loadUserContext(userId);
-            if (!ctx) return;
-            await sendPremiumSubscriptionCancelledEmail({
-                to: ctx.to,
-                userName: ctx.userName,
-                premiumUntil: formatDateLabel(ctx.premiumUntil),
-            });
-        })
-        .catch((err) => logFailure('Premium subscription cancelled', err));
+export async function notifyPremiumSubscriptionCancelled(userId) {
+    try {
+        const ctx = await loadUserContext(userId);
+        if (!ctx) return;
+        await sendPremiumSubscriptionCancelledEmail({
+            to: ctx.to,
+            userName: ctx.userName,
+            premiumUntil: formatDateLabel(ctx.premiumUntil),
+        });
+    } catch (err) {
+        logFailure('Premium subscription cancelled', err);
+    }
 }
 
-export function notifyAccountSuspended(user) {
-    Promise.resolve()
-        .then(async () => {
-            if (!user?.email?.trim()) return;
-            await sendAccountSuspendedEmail({
-                to: user.email.trim().toLowerCase(),
-                userName: user.name,
-            });
-        })
-        .catch((err) => logFailure('Account suspended', err));
+export async function notifyAccountSuspended(user) {
+    try {
+        if (!user?.email?.trim()) return;
+        await sendAccountSuspendedEmail({
+            to: user.email.trim().toLowerCase(),
+            userName: user.name,
+        });
+    } catch (err) {
+        logFailure('Account suspended', err);
+    }
 }

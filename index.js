@@ -50,11 +50,29 @@ const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/waraqah';
 let dbReady = false;
 
 async function connectDB() {
-    if (dbReady && mongoose.connection.readyState === 1) return;
-    await mongoose.connect(MONGO_URI, { useNewUrlParser: true, useUnifiedTopology: true });
+    if (mongoose.connection.readyState === 1) {
+        dbReady = true;
+        return;
+    }
+    if (mongoose.connection.readyState === 2) {
+        await mongoose.connection.asPromise();
+        dbReady = true;
+        return;
+    }
+    await mongoose.connect(MONGO_URI, {
+        serverSelectionTimeoutMS: 8000,
+        socketTimeoutMS: 45000,
+    });
     dbReady = true;
     console.log('MongoDB connected');
 }
+
+app.get('/api/health', (req, res) => {
+    res.json({
+        ok: true,
+        db: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+    });
+});
 
 app.use(async (req, res, next) => {
     try {
@@ -82,10 +100,6 @@ app.use('/api/products', productRoutes);
 
 app.get('/', (req, res) => {
     res.send('Waraqah API running');
-});
-
-app.get('/api/health', (req, res) => {
-    res.json({ ok: true });
 });
 
 app.use(notFoundHandler);

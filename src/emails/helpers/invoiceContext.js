@@ -1,5 +1,6 @@
 import Client from '../../../models/Client.js';
 import BusinessInfo from '../../../models/CompanyInfo.js';
+import { buildClientEmailBranding } from './clientEmailBranding.js';
 
 export function getFrontendBaseUrl() {
     return (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
@@ -55,12 +56,14 @@ export async function loadInvoiceEmailContext(invoice, userId) {
         throw err;
     }
 
-    const businessName = businessInfo?.name?.trim() || 'Waraqah';
+    const businessName = businessInfo?.name?.trim() || 'Your business';
+    const branding = buildClientEmailBranding(businessInfo, businessName);
 
     return {
         client,
         businessInfo,
         businessName,
+        branding,
         to: client.email.trim().toLowerCase(),
         customerName: client.name || client.company || 'Customer',
     };

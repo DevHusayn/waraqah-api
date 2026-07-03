@@ -46,6 +46,7 @@ export {
 export {
     dispatchInvoiceEmailToClient,
     tryAutoEmailInvoice,
+    dispatchPaidInvoiceEmails,
     dispatchOverdueInvoiceEmails,
     dispatchCancelledInvoiceEmails,
 } from './helpers/invoiceDispatch.js';

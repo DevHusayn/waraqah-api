@@ -2,6 +2,7 @@ import React from 'react';
 import { sendEmail } from '../sendEmail.js';
 import ReceiptEmail from '../templates/ReceiptEmail.js';
 import { formatCurrency, formatDate } from '../formatters.js';
+import { buildClientEmailBranding, getClientEmailFromAddress } from '../helpers/clientEmailBranding.js';
 
 /**
  * Send payment receipt to a customer.
@@ -17,6 +18,7 @@ import { formatCurrency, formatDate } from '../formatters.js';
  * @param {string} [params.paymentMethod] - Optional payment method label
  * @param {string} params.businessName - Sender business name
  * @param {string} [params.receiptUrl] - Optional link to view receipt online
+ * @param {object} [params.branding] - Business branding tokens
  */
 export async function sendReceiptEmail({
     to,
@@ -29,10 +31,14 @@ export async function sendReceiptEmail({
     paymentMethod,
     businessName,
     receiptUrl,
+    branding,
 }) {
+    const brand = branding || buildClientEmailBranding(null, businessName);
+
     return sendEmail({
         to,
-        subject: `Receipt ${receiptNumber} from ${businessName}`,
+        from: getClientEmailFromAddress(brand.businessName),
+        subject: `Receipt ${receiptNumber} from ${brand.businessName}`,
         type: 'receipt',
         react: React.createElement(ReceiptEmail, {
             customerName,
@@ -42,11 +48,12 @@ export async function sendReceiptEmail({
             currency,
             paymentDate,
             paymentMethod,
-            businessName,
+            businessName: brand.businessName,
             receiptUrl,
+            branding: brand,
         }),
         text: [
-            `Receipt ${receiptNumber} from ${businessName}`,
+            `Receipt ${receiptNumber} from ${brand.businessName}`,
             invoiceNumber ? `Invoice: ${invoiceNumber}` : null,
             '',
             `Amount paid: ${formatCurrency(amountPaid, currency)}`,

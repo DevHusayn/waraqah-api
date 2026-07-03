@@ -28,6 +28,7 @@ function validateRecipient(to) {
  * @param {React.ReactElement} options.react - React Email component tree
  * @param {string} [options.text] - Optional plain-text body (auto-generated if omitted)
  * @param {string} [options.replyTo] - Optional reply-to address
+ * @param {string} [options.from] - Optional from address override
  * @param {string} options.type - Internal email type for logging
  * @param {object} [options.tags] - Optional Resend tags
  * @returns {Promise<{ sent: boolean, id?: string, devLogged?: boolean }>}
@@ -39,10 +40,11 @@ export async function sendEmail({
     text,
     type = 'transactional',
     replyTo,
+    from: fromOverride,
     tags,
 }) {
     const recipient = validateRecipient(to);
-    const from = getDefaultFrom();
+    const from = fromOverride || getDefaultFrom();
 
     if (!getResendClient()) {
         if (isProductionEnvironment()) {

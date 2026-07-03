@@ -1,15 +1,19 @@
 import BusinessInfo from '../../../models/CompanyInfo.js';
 import { sendInvoiceEmail } from '../senders/invoiceEmail.js';
 import { sendPaymentReminderEmail } from '../senders/paymentReminderEmail.js';
+import { sendPaymentConfirmationEmail } from '../senders/paymentConfirmationEmail.js';
 import { sendInvoiceCancelledClientEmail } from '../senders/invoiceCancelledClientEmail.js';
 import {
     loadInvoiceEmailContext,
     buildInvoiceUrl,
+    buildReceiptUrl,
+    formatPaymentMethod,
     computeDaysUntilDue,
 } from './invoiceContext.js';
 import { ensureInvoicePublicToken } from '../../../utils/invoicePublicToken.js';
 import {
     notifyOwnerInvoiceEmailed,
+    notifyOwnerInvoicePaid,
     notifyOwnerInvoiceReminderSent,
     notifyOwnerInvoiceReceiptSent,
     notifyOwnerInvoiceCancelled,
@@ -41,13 +45,14 @@ export async function dispatchInvoiceEmailToClient({
         dueDate: invoice.dueDate,
         invoiceUrl: buildInvoiceUrl(invoice),
         businessName: ctx.businessName,
+        branding: ctx.branding,
     });
 
     invoice.clientInvoiceEmailedAt = new Date();
     await invoice.save();
 
     if (notifyOwner) {
-        notifyOwnerInvoiceEmailed({
+        await notifyOwnerInvoiceEmailed({
             userId,
             invoice,
             clientEmail: ctx.to,
@@ -92,12 +97,13 @@ export async function dispatchOverdueInvoiceEmails({ invoice, userId }) {
             daysUntilDue,
             invoiceUrl: buildInvoiceUrl(invoice),
             businessName: ctx.businessName,
+            branding: ctx.branding,
         });
 
         invoice.lastPaymentReminderAt = new Date();
         await invoice.save();
 
-        notifyOwnerInvoiceReminderSent({
+        await notifyOwnerInvoiceReminderSent({
             userId,
             invoice,
             clientEmail: ctx.to,
@@ -110,11 +116,43 @@ export async function dispatchOverdueInvoiceEmails({ invoice, userId }) {
     }
 }
 
+/**
+ * Notify client of payment + owner when an invoice is marked paid.
+ * Sends payment confirmation (not receipt — use send-receipt for that).
+ */
+export async function dispatchPaidInvoiceEmails(invoice, userId) {
+    try {
+        await ensureInvoicePublicToken(invoice);
+        const ctx = await loadInvoiceEmailContext(invoice, userId);
+        const receiptUrl = buildReceiptUrl(invoice);
+
+        await sendPaymentConfirmationEmail({
+            to: ctx.to,
+            customerName: ctx.customerName,
+            invoiceNumber: invoice.invoiceNumber,
+            amountPaid: invoice.total,
+            currency: invoice.currency || 'NGN',
+            paymentDate: invoice.datePaid || new Date(),
+            paymentMethod: formatPaymentMethod(invoice.paymentMethod),
+            businessName: ctx.businessName,
+            branding: ctx.branding,
+            receiptUrl,
+        });
+
+        await notifyOwnerInvoicePaid({
+            userId,
+            invoice,
+            customerName: ctx.customerName,
+            paymentMethod: formatPaymentMethod(invoice.paymentMethod),
+        });
+    } catch (err) {
+        console.error('[Waraqah Email] Paid invoice emails skipped:', err.message);
+    }
+}
+
 export async function dispatchCancelledInvoiceEmails({ invoice, userId }) {
     try {
         const ctx = await loadInvoiceEmailContext(invoice, userId).catch(() => null);
-        const businessInfo = await BusinessInfo.findOne({ userId });
-        const businessName = businessInfo?.name?.trim() || 'Your business';
 
         if (ctx?.to) {
             await sendInvoiceCancelledClientEmail({
@@ -123,11 +161,12 @@ export async function dispatchCancelledInvoiceEmails({ invoice, userId }) {
                 invoiceNumber: invoice.invoiceNumber,
                 amount: invoice.total,
                 currency: invoice.currency || 'NGN',
-                businessName,
+                businessName: ctx.businessName,
+                branding: ctx.branding,
             });
         }
 
-        notifyOwnerInvoiceCancelled({
+        await notifyOwnerInvoiceCancelled({
             userId,
             invoice,
             customerName: ctx?.customerName || 'Client',

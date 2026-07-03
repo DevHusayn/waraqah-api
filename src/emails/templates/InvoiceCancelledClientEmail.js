@@ -1,6 +1,7 @@
 import React from 'react';
 import { Section, Text } from '@react-email/components';
-import EmailLayout, { emailStyles } from '../layouts/EmailLayout.js';
+import ClientEmailLayout, { createClientEmailStyles } from '../layouts/ClientEmailLayout.js';
+import { buildClientEmailBranding } from '../helpers/clientEmailBranding.js';
 import { formatCurrency } from '../formatters.js';
 
 export default function InvoiceCancelledClientEmail({
@@ -9,17 +10,23 @@ export default function InvoiceCancelledClientEmail({
     amount,
     currency = 'NGN',
     businessName,
+    branding,
 }) {
+    const brand = branding || buildClientEmailBranding(null, businessName);
+    const emailStyles = createClientEmailStyles(brand);
     const greetingName = customerName?.trim() || 'there';
 
     return React.createElement(
-        EmailLayout,
-        { preview: `Invoice ${invoiceNumber} from ${businessName} has been cancelled.` },
+        ClientEmailLayout,
+        {
+            preview: `Invoice ${invoiceNumber} from ${brand.businessName} has been cancelled.`,
+            branding: brand,
+        },
         React.createElement(Text, { style: emailStyles.heading }, 'Invoice cancelled'),
         React.createElement(
             Text,
             { style: emailStyles.paragraph },
-            `Hi ${greetingName}, ${businessName} has cancelled invoice ${invoiceNumber}. No payment is required for this invoice.`,
+            `Hi ${greetingName}, ${brand.businessName} has cancelled invoice ${invoiceNumber}. No payment is required for this invoice.`,
         ),
         React.createElement(
             Section,

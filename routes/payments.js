@@ -68,7 +68,7 @@ async function fulfillPremiumPayment(payment, paystackData) {
         months: 1,
         subscription: subMeta.subscriptionCode ? subMeta : null,
     });
-    notifyPremiumUpgradeSuccess(payment.userId);
+    await notifyPremiumUpgradeSuccess(payment.userId);
     return payment;
 }
 
@@ -276,7 +276,7 @@ router.post('/subscription/cancel', auth, async (req, res) => {
 
         await disableSubscription(info.paystackSubscriptionCode, emailToken);
         await deactivatePremiumSubscription(req.user.userId);
-        notifyPremiumSubscriptionCancelled(req.user.userId);
+        await notifyPremiumSubscriptionCancelled(req.user.userId);
 
         res.json({
             message: 'Auto-renewal cancelled. Premium remains until the end of your billing period.',
@@ -345,7 +345,7 @@ export async function paystackWebhookHandler(req, res) {
             if (info) {
                 info.subscriptionStatus = 'cancelled';
                 await info.save();
-                notifyPremiumSubscriptionCancelled(info.userId);
+                await notifyPremiumSubscriptionCancelled(info.userId);
             }
         }
 
@@ -358,7 +358,7 @@ export async function paystackWebhookHandler(req, res) {
                     { $set: { subscriptionStatus: 'attention' } }
                 );
                 if (info?.userId) {
-                    notifyPremiumPaymentFailed(info.userId);
+                    await notifyPremiumPaymentFailed(info.userId);
                 }
             }
         }

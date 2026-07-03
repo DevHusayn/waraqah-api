@@ -3,10 +3,15 @@ import Invoice from '../models/Invoice.js';
 import Client from '../models/Client.js';
 import BusinessInfo from '../models/CompanyInfo.js';
 import asyncHandler from '../middleware/asyncHandler.js';
+import { isPremiumActive, PLANS } from '../utils/businessInfoHelpers.js';
 
 const router = express.Router();
 
 const HIDDEN_STATUSES = new Set(['draft', 'cancelled']);
+
+function resolveCompanyLogo(info) {
+    return (info.companyLogoUrl || info.businessLogo || '').trim();
+}
 
 function sanitizePublicClient(client) {
     if (!client) return null;
@@ -15,26 +20,42 @@ function sanitizePublicClient(client) {
         company: client.company || '',
         address: client.address || '',
         phone: client.phone || '',
+        email: client.email || '',
     };
 }
 
 function sanitizePublicBusiness(info) {
     if (!info) {
-        return { name: 'Business' };
+        return {
+            name: 'Business',
+            brandColor: '#16A34A',
+            plan: PLANS.FREE,
+            premiumUntil: null,
+        };
     }
 
+    const o = typeof info.toObject === 'function' ? info.toObject() : info;
+    const premium = isPremiumActive(o);
+    const plan = premium ? PLANS.PREMIUM : PLANS.FREE;
+    const logo = premium ? resolveCompanyLogo(o) : '';
+
     return {
-        name: info.name || 'Business',
-        address: info.address || '',
-        email: info.email || '',
-        phone: info.phone || '',
-        website: info.website || '',
-        companyLogoUrl: info.companyLogoUrl || info.companyLogoAvatarUrl || '',
-        brandColor: info.brandColor || '#16A34A',
-        paymentAccountName: info.paymentAccountName || '',
-        paymentBankName: info.paymentBankName || '',
-        paymentAccountNumber: info.paymentAccountNumber || '',
-        paymentInstructions: info.paymentInstructions || '',
+        name: o.name || 'Business',
+        address: o.address || '',
+        email: o.email || '',
+        phone: o.phone || '',
+        website: o.website || '',
+        brandColor: o.brandColor || '#16A34A',
+        plan,
+        premiumUntil: premium && o.premiumUntil ? o.premiumUntil : null,
+        businessLogo: logo,
+        companyLogoUrl: logo,
+        companyStampUrl: premium ? (o.companyStampUrl || '').trim() : '',
+        authorizedSignatureUrl: premium ? (o.authorizedSignatureUrl || '').trim() : '',
+        paymentAccountName: o.paymentAccountName || '',
+        paymentBankName: o.paymentBankName || '',
+        paymentAccountNumber: o.paymentAccountNumber || '',
+        paymentInstructions: o.paymentInstructions || '',
     };
 }
 

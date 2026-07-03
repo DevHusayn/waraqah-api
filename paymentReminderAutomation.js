@@ -49,12 +49,13 @@ async function sendDuePaymentReminders() {
                 daysUntilDue,
                 invoiceUrl: buildInvoiceUrl(invoice),
                 businessName: ctx.businessName,
+                branding: ctx.branding,
             });
 
             invoice.lastPaymentReminderAt = new Date();
             await invoice.save();
 
-            notifyOwnerInvoiceReminderSent({
+            await notifyOwnerInvoiceReminderSent({
                 userId: invoice.userId,
                 invoice,
                 clientEmail: ctx.to,

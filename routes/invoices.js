@@ -22,9 +22,9 @@ import {
     getEmailErrorMessage,
     dispatchInvoiceEmailToClient,
     tryAutoEmailInvoice,
+    dispatchPaidInvoiceEmails,
     dispatchOverdueInvoiceEmails,
     dispatchCancelledInvoiceEmails,
-    notifyOwnerInvoicePaid,
     notifyOwnerInvoiceReminderSent,
     notifyOwnerInvoiceReceiptSent,
 } from '../src/emails/index.js';
@@ -43,36 +43,6 @@ import asyncHandler from '../middleware/asyncHandler.js';
 const router = express.Router();
 
 const PAID = 'paid';
-
-async function dispatchPaidInvoiceEmails(invoice, userId) {
-    try {
-        await ensureInvoicePublicToken(invoice);
-        const ctx = await loadInvoiceEmailContext(invoice, userId);
-        const receiptUrl = buildReceiptUrl(invoice);
-
-        await sendReceiptEmail({
-            to: ctx.to,
-            customerName: ctx.customerName,
-            invoiceNumber: invoice.invoiceNumber,
-            receiptNumber: invoice.receiptNumber,
-            amountPaid: invoice.total,
-            currency: invoice.currency || 'NGN',
-            paymentDate: invoice.datePaid || new Date(),
-            paymentMethod: formatPaymentMethod(invoice.paymentMethod),
-            businessName: ctx.businessName,
-            receiptUrl,
-        });
-
-        notifyOwnerInvoicePaid({
-            userId,
-            invoice,
-            customerName: ctx.customerName,
-            paymentMethod: formatPaymentMethod(invoice.paymentMethod),
-        });
-    } catch (err) {
-        console.error('[Waraqah Email] Paid invoice emails skipped:', err.message);
-    }
-}
 
 const numberGenerators = {
     getNextInvoiceNumber,
@@ -220,13 +190,13 @@ router.put('/:id', auth, requireEmailVerified, validateObjectId(), async (req, r
         const finalized = isFinalizingDraft(existing, normalized);
 
         if (wasPaid) {
-            dispatchPaidInvoiceEmails(invoice, req.user.userId);
+            await dispatchPaidInvoiceEmails(invoice, req.user.userId);
         }
         if (becameOverdue) {
-            dispatchOverdueInvoiceEmails({ invoice, userId: req.user.userId });
+            await dispatchOverdueInvoiceEmails({ invoice, userId: req.user.userId });
         }
         if (becameCancelled) {
-            dispatchCancelledInvoiceEmails({ invoice, userId: req.user.userId });
+            await dispatchCancelledInvoiceEmails({ invoice, userId: req.user.userId });
         }
         if (finalized) {
             await tryAutoEmailInvoice({ invoice, userId: req.user.userId });
@@ -317,12 +287,13 @@ router.post('/:id/send-reminder', auth, requireEmailVerified, validateObjectId()
             daysUntilDue,
             invoiceUrl: buildInvoiceUrl(invoice),
             businessName: ctx.businessName,
+            branding: ctx.branding,
         });
 
         invoice.lastPaymentReminderAt = new Date();
         await invoice.save();
 
-        notifyOwnerInvoiceReminderSent({
+        await notifyOwnerInvoiceReminderSent({
             userId: req.user.userId,
             invoice,
             clientEmail: ctx.to,
@@ -361,14 +332,18 @@ router.post('/:id/send-receipt', auth, requireEmailVerified, validateObjectId(),
         await sendReceiptEmail({
             to: ctx.to,
             customerName: ctx.customerName,
+            invoiceNumber: invoice.invoiceNumber,
             receiptNumber: invoice.receiptNumber,
             amountPaid: invoice.total,
             currency: invoice.currency || 'NGN',
             paymentDate: invoice.datePaid || new Date(),
+            paymentMethod: formatPaymentMethod(invoice.paymentMethod),
             businessName: ctx.businessName,
+            branding: ctx.branding,
+            receiptUrl: buildReceiptUrl(invoice),
         });
 
-        notifyOwnerInvoiceReceiptSent({
+        await notifyOwnerInvoiceReceiptSent({
             userId: req.user.userId,
             invoice,
             clientEmail: ctx.to,

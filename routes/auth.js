@@ -102,7 +102,7 @@ router.patch('/admin/users/:id/status', auth, validateObjectId(), async (req, re
         user.status = wasActive ? 'suspended' : 'active';
         await user.save();
         if (wasActive) {
-            notifyAccountSuspended(user);
+            await notifyAccountSuspended(user);
         }
         res.json({ message: 'User status updated', status: user.status });
     } catch (err) {
@@ -248,7 +248,7 @@ router.post('/register', registerLimiter, async (req, res) => {
             ...sanitizedBusinessInfo,
         });
 
-        sendRegistrationEmails({ user, verificationToken });
+        await sendRegistrationEmails({ user, verificationToken });
 
         res.status(201).json({
             message: 'Account created. Check your email to verify your address before signing in.',

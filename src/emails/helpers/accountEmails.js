@@ -5,15 +5,16 @@ import {
 import { getFrontendBaseUrl } from './invoiceContext.js';
 
 /**
- * Fire-and-forget welcome + verification emails after registration.
+ * Send welcome + verification emails after registration.
+ * Must be awaited before the HTTP response on serverless (Vercel).
  * Failures are logged but do not block signup.
  */
-export function sendRegistrationEmails({ user, verificationToken }) {
+export async function sendRegistrationEmails({ user, verificationToken }) {
     const baseUrl = getFrontendBaseUrl();
     const dashboardUrl = baseUrl;
     const verificationUrl = `${baseUrl}/verify-email/${verificationToken}`;
 
-    Promise.allSettled([
+    const results = await Promise.allSettled([
         sendWelcomeEmail({
             to: user.email,
             userName: user.name,
@@ -24,12 +25,12 @@ export function sendRegistrationEmails({ user, verificationToken }) {
             userName: user.name,
             verificationUrl,
         }),
-    ]).then((results) => {
-        results.forEach((result, index) => {
-            if (result.status === 'rejected') {
-                const type = index === 0 ? 'welcome' : 'email-verification';
-                console.error(`[Waraqah Email] Registration ${type} failed:`, result.reason);
-            }
-        });
+    ]);
+
+    results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+            const type = index === 0 ? 'welcome' : 'email-verification';
+            console.error(`[Waraqah Email] Registration ${type} failed:`, result.reason);
+        }
     });
 }

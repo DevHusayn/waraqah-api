@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button, Section, Text } from '@react-email/components';
-import EmailLayout, { emailStyles } from '../layouts/EmailLayout.js';
+import ClientEmailLayout, { createClientEmailStyles } from '../layouts/ClientEmailLayout.js';
+import { buildClientEmailBranding } from '../helpers/clientEmailBranding.js';
 import { formatCurrency, formatDate } from '../formatters.js';
 
 /**
@@ -14,6 +15,7 @@ import { formatCurrency, formatDate } from '../formatters.js';
  * @param {string} [props.paymentMethod] - Optional payment method label
  * @param {string} props.businessName - Sender business name
  * @param {string} [props.receiptUrl] - Optional link to view receipt online
+ * @param {object} [props.branding] - Business branding tokens
  */
 export default function ReceiptEmail({
     customerName,
@@ -25,19 +27,23 @@ export default function ReceiptEmail({
     paymentMethod,
     businessName,
     receiptUrl,
+    branding,
 }) {
+    const brand = branding || buildClientEmailBranding(null, businessName);
+    const emailStyles = createClientEmailStyles(brand);
     const greetingName = customerName?.trim() || 'there';
 
     return React.createElement(
-        EmailLayout,
+        ClientEmailLayout,
         {
-            preview: `Receipt ${receiptNumber} from ${businessName} — ${formatCurrency(amountPaid, currency)} paid on ${formatDate(paymentDate)}.`,
+            preview: `Receipt ${receiptNumber} from ${brand.businessName} — ${formatCurrency(amountPaid, currency)} paid on ${formatDate(paymentDate)}.`,
+            branding: brand,
         },
         React.createElement(Text, { style: emailStyles.heading }, 'Payment receipt'),
         React.createElement(
             Text,
             { style: emailStyles.paragraph },
-            `Hi ${greetingName}, thank you for your payment to ${businessName}. Here is your receipt for your records.`,
+            `Hi ${greetingName}, thank you for your payment to ${brand.businessName}. Here is your receipt for your records.`,
         ),
         React.createElement(
             Section,
