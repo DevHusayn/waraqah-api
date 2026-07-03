@@ -163,6 +163,19 @@ export function assertInvoiceUpdateAllowed(existing, payload) {
     }
 }
 
+/** Block deletion of terminal invoices kept for records. */
+export function assertInvoiceDeleteAllowed(existing) {
+    const status = existing.status || 'pending';
+
+    if (status === PAID) {
+        throw validationError('Paid invoices cannot be deleted.');
+    }
+
+    if (status === CANCELLED) {
+        throw validationError('Cancelled invoices cannot be deleted.');
+    }
+}
+
 export function normalizeInvoicePayload(body, { isCreate = false, existing = null } = {}) {
     const data = sanitizeInvoicePayload(body);
     let status = data.status || (isCreate ? DRAFT : 'pending');

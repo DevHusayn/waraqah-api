@@ -15,6 +15,7 @@ import {
     assignDocumentNumbers,
     isFinalizingDraft,
     isDraftStatus,
+    assertInvoiceDeleteAllowed,
 } from '../utils/invoiceValidation.js';
 import {
     sendReceiptEmail,
@@ -363,8 +364,12 @@ router.post('/:id/send-receipt', auth, requireEmailVerified, validateObjectId(),
 
 // Delete invoice
 router.delete('/:id', auth, requireEmailVerified, validateObjectId(), asyncHandler(async (req, res) => {
-    const invoice = await Invoice.findOneAndDelete({ _id: req.params.id, userId: req.user.userId });
+    const invoice = await Invoice.findOne({ _id: req.params.id, userId: req.user.userId });
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
+
+    assertInvoiceDeleteAllowed(invoice);
+
+    await Invoice.deleteOne({ _id: invoice._id });
     res.json({ message: 'Invoice deleted' });
 }));
 
