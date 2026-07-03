@@ -1,5 +1,6 @@
 import express from 'express';
 import { sendDuePaymentReminders } from '../paymentReminderAutomation.js';
+import asyncHandler from '../middleware/asyncHandler.js';
 
 const router = express.Router();
 
@@ -18,14 +19,9 @@ function verifyCronSecret(req, res, next) {
 }
 
 /** Vercel Cron — daily payment reminder emails to clients. */
-router.get('/payment-reminders', verifyCronSecret, async (req, res) => {
-    try {
-        await sendDuePaymentReminders();
-        res.json({ ok: true, message: 'Payment reminders processed.' });
-    } catch (err) {
-        console.error('[Waraqah Cron] Payment reminders failed:', err);
-        res.status(500).json({ message: 'Payment reminder job failed.' });
-    }
-});
+router.get('/payment-reminders', verifyCronSecret, asyncHandler(async (req, res) => {
+    await sendDuePaymentReminders();
+    res.json({ ok: true, message: 'Payment reminders processed.' });
+}));
 
 export default router;

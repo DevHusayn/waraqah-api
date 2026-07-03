@@ -2,6 +2,7 @@ import express from 'express';
 import Invoice from '../models/Invoice.js';
 import Client from '../models/Client.js';
 import BusinessInfo from '../models/CompanyInfo.js';
+import asyncHandler from '../middleware/asyncHandler.js';
 
 const router = express.Router();
 
@@ -64,34 +65,29 @@ function sanitizePublicInvoice(invoice) {
 }
 
 /** Public invoice view — no authentication required. */
-router.get('/invoices/:token', async (req, res) => {
-    try {
-        const token = String(req.params.token || '').trim();
-        if (!token) {
-            return res.status(400).json({ message: 'Invalid invoice link.' });
-        }
-
-        const invoice = await Invoice.findOne({ publicToken: token });
-        if (!invoice || HIDDEN_STATUSES.has(invoice.status)) {
-            return res.status(404).json({ message: 'This invoice link is invalid or no longer available.' });
-        }
-
-        const [client, businessInfo] = await Promise.all([
-            invoice.clientId
-                ? Client.findOne({ _id: invoice.clientId, userId: invoice.userId })
-                : null,
-            BusinessInfo.findOne({ userId: invoice.userId }),
-        ]);
-
-        res.json({
-            invoice: sanitizePublicInvoice(invoice),
-            client: sanitizePublicClient(client),
-            business: sanitizePublicBusiness(businessInfo),
-        });
-    } catch (err) {
-        console.error('Public invoice error:', err);
-        res.status(500).json({ message: 'Could not load invoice.' });
+router.get('/invoices/:token', asyncHandler(async (req, res) => {
+    const token = String(req.params.token || '').trim();
+    if (!token) {
+        return res.status(400).json({ message: 'Invalid invoice link.' });
     }
-});
+
+    const invoice = await Invoice.findOne({ publicToken: token });
+    if (!invoice || HIDDEN_STATUSES.has(invoice.status)) {
+        return res.status(404).json({ message: 'This invoice link is invalid or no longer available.' });
+    }
+
+    const [client, businessInfo] = await Promise.all([
+        invoice.clientId
+            ? Client.findOne({ _id: invoice.clientId, userId: invoice.userId })
+            : null,
+        BusinessInfo.findOne({ userId: invoice.userId }),
+    ]);
+
+    res.json({
+        invoice: sanitizePublicInvoice(invoice),
+        client: sanitizePublicClient(client),
+        business: sanitizePublicBusiness(businessInfo),
+    });
+}));
 
 export default router;

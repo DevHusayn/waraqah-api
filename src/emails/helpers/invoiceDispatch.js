@@ -43,6 +43,9 @@ export async function dispatchInvoiceEmailToClient({
         businessName: ctx.businessName,
     });
 
+    invoice.clientInvoiceEmailedAt = new Date();
+    await invoice.save();
+
     if (notifyOwner) {
         notifyOwnerInvoiceEmailed({
             userId,

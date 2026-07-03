@@ -18,6 +18,7 @@ import { buildCorsOptions } from './utils/corsConfig.js';
 import { assertEnvOrExit } from './utils/envValidation.js';
 import { globalApiLimiter, webhookLimiter } from './middleware/rateLimits.js';
 import csrfProtection from './middleware/csrf.js';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 
 dotenv.config();
 assertEnvOrExit();
@@ -86,6 +87,9 @@ app.get('/', (req, res) => {
 app.get('/api/health', (req, res) => {
     res.json({ ok: true });
 });
+
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 if (process.env.VERCEL !== '1') {
     connectDB()

@@ -43,6 +43,8 @@ const invoiceSchema = new mongoose.Schema({
     },
     recurringEndDate: { type: String, default: null },
     lastPaymentReminderAt: { type: Date, default: null },
+    /** Set when the invoice notification is emailed to the client. */
+    clientInvoiceEmailedAt: { type: Date, default: null },
 }, { timestamps: true });
 
 export default mongoose.model('Invoice', invoiceSchema);
