@@ -1,5 +1,6 @@
 import Client from '../../../models/Client.js';
 import BusinessInfo from '../../../models/CompanyInfo.js';
+import { ensureInvoicePublicToken } from '../../../utils/invoicePublicToken.js';
 import { buildClientEmailBranding } from './clientEmailBranding.js';
 
 export function getFrontendBaseUrl() {
@@ -43,6 +44,8 @@ export function formatPaymentMethod(method) {
  * Load client + business info needed for invoice-related emails.
  */
 export async function loadInvoiceEmailContext(invoice, userId) {
+    await ensureInvoicePublicToken(invoice);
+
     const [client, businessInfo] = await Promise.all([
         invoice.clientId
             ? Client.findOne({ _id: invoice.clientId, userId })
@@ -57,7 +60,9 @@ export async function loadInvoiceEmailContext(invoice, userId) {
     }
 
     const businessName = businessInfo?.name?.trim() || 'Your business';
-    const branding = buildClientEmailBranding(businessInfo, businessName);
+    const branding = buildClientEmailBranding(businessInfo, businessName, {
+        publicToken: invoice.publicToken,
+    });
 
     return {
         client,

@@ -273,8 +273,8 @@ router.post('/:id/send-reminder', auth, requireEmailVerified, validateObjectId()
             });
         }
 
-        const ctx = await loadInvoiceEmailContext(invoice, req.user.userId);
         await ensureInvoicePublicToken(invoice);
+        const ctx = await loadInvoiceEmailContext(invoice, req.user.userId);
         const daysUntilDue = computeDaysUntilDue(invoice.dueDate);
 
         await sendPaymentReminderEmail({
@@ -327,6 +327,7 @@ router.post('/:id/send-receipt', auth, requireEmailVerified, validateObjectId(),
             return res.status(400).json({ message: 'This invoice does not have a receipt number.' });
         }
 
+        await ensureInvoicePublicToken(invoice);
         const ctx = await loadInvoiceEmailContext(invoice, req.user.userId);
 
         await sendReceiptEmail({

@@ -1,5 +1,6 @@
-import { BRAND, getEmailFromAddress } from '../config.js';
+import { BRAND, getApiBaseUrl, getEmailFromAddress } from '../config.js';
 import { sanitizeHexColor } from '../../../utils/sanitize.js';
+import { isPremiumActive } from '../../../utils/businessInfoHelpers.js';
 
 function hexToRgb(hex) {
     const normalized = hex.replace('#', '');
@@ -45,19 +46,37 @@ function resolveBusinessLogo(businessInfo) {
 }
 
 /**
+ * Data URLs break HTML email (line-length limits, client blocking). Host via public API instead.
+ */
+export function resolveEmailLogoUrl(rawLogo, publicToken) {
+    const trimmed = String(rawLogo || '').trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith('https://') || trimmed.startsWith('http://')) {
+        return trimmed;
+    }
+    if (trimmed.startsWith('data:') && publicToken) {
+        return `${getApiBaseUrl()}/public/invoices/${encodeURIComponent(publicToken)}/logo`;
+    }
+    return null;
+}
+
+/**
  * Build branding tokens for client-facing invoice emails.
  */
-export function buildClientEmailBranding(businessInfo, businessName) {
+export function buildClientEmailBranding(businessInfo, businessName, options = {}) {
+    const { publicToken } = options;
     const name = businessName?.trim() || businessInfo?.name?.trim() || 'Your business';
     const brandColor = sanitizeHexColor(businessInfo?.brandColor, BRAND.accent);
-    const logoUrl = resolveBusinessLogo(businessInfo);
+    const premium = isPremiumActive(businessInfo);
+    const rawLogo = premium ? resolveBusinessLogo(businessInfo) : '';
+    const logoUrl = resolveEmailLogoUrl(rawLogo, publicToken);
 
     return {
         businessName: name,
         brandColor,
         accentDark: adjustColor(brandColor, { darken: 0.15 }),
         accentLight: adjustColor(brandColor, { lighten: 0.88 }),
-        logoUrl: logoUrl || null,
+        logoUrl,
     };
 }
 
@@ -71,4 +90,18 @@ export function getClientEmailFromAddress(businessName) {
     const displayName = businessName?.trim() || BRAND.name;
     const safeName = displayName.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     return `"${safeName}" <${emailAddress}>`;
+}
+
+export function parseDataUrlImage(dataUrl) {
+    const trimmed = String(dataUrl || '').trim();
+    const match = trimmed.match(/^data:([^;]+);base64,(.+)$/);
+    if (!match) return null;
+    try {
+        return {
+            mime: match[1],
+            buffer: Buffer.from(match[2], 'base64'),
+        };
+    } catch {
+        return null;
+    }
 }

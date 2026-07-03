@@ -28,6 +28,9 @@ export default function ClientEmailLayout({ preview, branding, children }) {
     const brand = branding || buildClientEmailBranding(null, 'Your business');
     const styles = createClientEmailStyles(brand);
     const waraqahUrl = getWebsiteUrl();
+    const logoUrl = brand.logoUrl && !String(brand.logoUrl).startsWith('data:')
+        ? brand.logoUrl
+        : null;
 
     return React.createElement(
         Html,
@@ -43,9 +46,9 @@ export default function ClientEmailLayout({ preview, branding, children }) {
                 React.createElement(
                     Section,
                     { style: styles.header },
-                    brand.logoUrl
+                    logoUrl
                         ? React.createElement(Img, {
-                            src: brand.logoUrl,
+                            src: logoUrl,
                             alt: brand.businessName,
                             width: 140,
                             height: 40,

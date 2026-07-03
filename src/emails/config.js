@@ -57,3 +57,11 @@ export function isResendConfigured() {
 export function isProductionEnvironment() {
     return process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
 }
+
+/** Public API base URL — used for hosted email assets (logos). */
+export function getApiBaseUrl() {
+    const explicit = process.env.API_URL?.trim();
+    if (explicit) return explicit.replace(/\/$/, '');
+    const port = process.env.PORT || 5000;
+    return `http://localhost:${port}/api`;
+}
