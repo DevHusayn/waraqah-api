@@ -34,6 +34,8 @@ const businessInfoSchema = new mongoose.Schema({
     invoiceTemplateId: { type: String, default: 'classic' },
     /** Email invoice to client automatically when finalized (pending). */
     autoEmailInvoices: { type: Boolean, default: false },
+    /** Email payment reminders automatically for due soon / overdue invoices. */
+    autoPaymentReminders: { type: Boolean, default: true },
 }, { timestamps: true });
 
 export default mongoose.model('BusinessInfo', businessInfoSchema);

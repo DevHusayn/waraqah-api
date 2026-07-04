@@ -23,7 +23,15 @@ export const BRAND = {
 
 export const PASSWORD_RESET_EXPIRY_MINUTES = 15;
 export const EMAIL_VERIFICATION_EXPIRY_HOURS = 24;
-export const PAYMENT_REMINDER_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
+export const PAYMENT_REMINDER_MIN_DAYS_BETWEEN = 3;
+export const PAYMENT_REMINDER_COOLDOWN_MS = PAYMENT_REMINDER_MIN_DAYS_BETWEEN * 24 * 60 * 60 * 1000;
+
+export function getNextPaymentReminderDate(lastPaymentReminderAt) {
+    if (!lastPaymentReminderAt) return null;
+    const next = new Date(lastPaymentReminderAt);
+    next.setDate(next.getDate() + PAYMENT_REMINDER_MIN_DAYS_BETWEEN);
+    return next;
+}
 
 export function getEmailFromAddress() {
     return process.env.EMAIL_FROM?.trim() || 'Waraqah <notifications@mywaraqah.com>';

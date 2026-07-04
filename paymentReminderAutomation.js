@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import Invoice from './models/Invoice.js';
+import BusinessInfo from './models/CompanyInfo.js';
 import {
     sendPaymentReminderEmail,
 } from './src/emails/index.js';
@@ -27,7 +28,18 @@ async function sendDuePaymentReminders() {
         clientId: { $ne: null },
     });
 
+    const userIds = [...new Set(candidates.map((invoice) => String(invoice.userId)))];
+    const businessRows = userIds.length
+        ? await BusinessInfo.find({ userId: { $in: userIds } })
+            .select('userId autoPaymentReminders')
+            .lean()
+        : [];
+    const autoRemindersByUser = new Map(
+        businessRows.map((row) => [String(row.userId), row.autoPaymentReminders !== false]),
+    );
+
     for (const invoice of candidates) {
+        if (autoRemindersByUser.get(String(invoice.userId)) === false) continue;
         const daysUntilDue = computeDaysUntilDue(invoice.dueDate);
         const isDueSoon = daysUntilDue <= REMINDER_WINDOW_DAYS;
         if (!isDueSoon) continue;

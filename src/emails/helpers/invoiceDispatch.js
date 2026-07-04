@@ -1,4 +1,5 @@
 import BusinessInfo from '../../../models/CompanyInfo.js';
+import { PAYMENT_REMINDER_COOLDOWN_MS } from '../config.js';
 import { sendInvoiceEmail } from '../senders/invoiceEmail.js';
 import { sendPaymentReminderEmail } from '../senders/paymentReminderEmail.js';
 import { sendPaymentConfirmationEmail } from '../senders/paymentConfirmationEmail.js';
@@ -22,6 +23,11 @@ import {
 export async function shouldAutoEmailInvoices(userId) {
     const info = await BusinessInfo.findOne({ userId }).select('autoEmailInvoices');
     return Boolean(info?.autoEmailInvoices);
+}
+
+export async function shouldAutoPaymentReminders(userId) {
+    const info = await BusinessInfo.findOne({ userId }).select('autoPaymentReminders');
+    return info?.autoPaymentReminders !== false;
 }
 
 /**
@@ -83,6 +89,11 @@ export async function tryAutoEmailInvoice({ invoice, userId }) {
 
 export async function dispatchOverdueInvoiceEmails({ invoice, userId }) {
     try {
+        if (!(await shouldAutoPaymentReminders(userId))) return;
+
+        const lastReminder = invoice.lastPaymentReminderAt?.getTime() || 0;
+        if (Date.now() - lastReminder < PAYMENT_REMINDER_COOLDOWN_MS) return;
+
         await ensureInvoicePublicToken(invoice);
         const ctx = await loadInvoiceEmailContext(invoice, userId);
         const daysUntilDue = computeDaysUntilDue(invoice.dueDate);

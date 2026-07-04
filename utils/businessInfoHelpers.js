@@ -48,6 +48,7 @@ const ALLOWED_UPDATE_FIELDS = [
     'paymentInstructions',
     'invoiceTemplateId',
     'autoEmailInvoices',
+    'autoPaymentReminders',
 ];
 
 const PREMIUM_PNG_ASSET_FIELDS = [
@@ -169,6 +170,10 @@ export function pickAllowedBusinessUpdates(body, { allowPlan = false, premium = 
         updates.autoEmailInvoices = Boolean(updates.autoEmailInvoices);
     }
 
+    if (updates.autoPaymentReminders !== undefined) {
+        updates.autoPaymentReminders = Boolean(updates.autoPaymentReminders);
+    }
+
     for (const key of ['paymentAccountName', 'paymentBankName', 'paymentAccountNumber', 'paymentInstructions']) {
         if (updates[key] !== undefined) {
             updates[key] = sanitizePlainText(updates[key], TEXT_LIMITS[key]);
@@ -232,6 +237,7 @@ export function toBusinessInfoResponse(doc) {
         paymentInstructions: o.paymentInstructions || '',
         invoiceTemplateId,
         autoEmailInvoices: Boolean(o.autoEmailInvoices),
+        autoPaymentReminders: o.autoPaymentReminders !== false,
     };
 }
 
@@ -266,4 +272,5 @@ export const defaultBusinessInfoFields = {
     paymentInstructions: '',
     invoiceTemplateId: DEFAULT_TEMPLATE_ID,
     autoEmailInvoices: false,
+    autoPaymentReminders: true,
 };

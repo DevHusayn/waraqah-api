@@ -29,7 +29,7 @@ import {
     notifyOwnerInvoiceReminderSent,
     notifyOwnerInvoiceReceiptSent,
 } from '../src/emails/index.js';
-import { PAYMENT_REMINDER_COOLDOWN_MS } from '../src/emails/config.js';
+import { PAYMENT_REMINDER_COOLDOWN_MS, PAYMENT_REMINDER_MIN_DAYS_BETWEEN, getNextPaymentReminderDate } from '../src/emails/config.js';
 import {
     loadInvoiceEmailContext,
     buildInvoiceUrl,
@@ -269,8 +269,10 @@ router.post('/:id/send-reminder', auth, requireEmailVerified, validateObjectId()
 
         const lastReminder = invoice.lastPaymentReminderAt?.getTime() || 0;
         if (Date.now() - lastReminder < PAYMENT_REMINDER_COOLDOWN_MS) {
+            const nextDate = getNextPaymentReminderDate(invoice.lastPaymentReminderAt);
+            const nextLabel = nextDate ? ` after ${nextDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : '';
             return res.status(429).json({
-                message: 'A reminder was sent recently. Please wait before sending another.',
+                message: `A reminder was already sent within the last ${PAYMENT_REMINDER_MIN_DAYS_BETWEEN} days. You can send another${nextLabel}.`,
             });
         }
 
@@ -303,7 +305,11 @@ router.post('/:id/send-reminder', auth, requireEmailVerified, validateObjectId()
             automated: false,
         });
 
-        res.json({ message: 'Payment reminder sent.', sentTo: ctx.to });
+        res.json({
+            message: 'Payment reminder sent.',
+            sentTo: ctx.to,
+            lastPaymentReminderAt: invoice.lastPaymentReminderAt,
+        });
     } catch (err) {
         if (err.status === 400) {
             return res.status(400).json({ message: err.message });
