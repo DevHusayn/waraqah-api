@@ -1,14 +1,27 @@
+import mongoose from 'mongoose';
 import Invoice from '../models/Invoice.js';
 import Client from '../models/Client.js';
 
 const SUMMARY_FIELDS =
     'invoiceNumber receiptNumber clientId date dueDate status total currency createdAt updatedAt';
 
+function toUserObjectId(userId) {
+    if (userId instanceof mongoose.Types.ObjectId) return userId;
+    return new mongoose.Types.ObjectId(String(userId));
+}
+
 function mapInvoiceSummary(doc) {
     return {
         ...doc,
         id: doc._id?.toString?.() || doc._id || doc.id,
     };
+}
+
+function sumRevenueForStatus(invoices, status) {
+    return invoices.reduce((sum, inv) => {
+        if (inv.status !== status) return sum;
+        return sum + (Number(inv.total) || 0);
+    }, 0);
 }
 
 async function attachClientNames(invoices) {
@@ -36,42 +49,24 @@ async function attachClientNames(invoices) {
 
 /** Aggregated dashboard payload — avoids loading the full invoice list on home. */
 export async function getDashboardForUser(userId) {
-    const nonDraftFilter = { userId, status: { $ne: 'draft' } };
+    const uid = toUserObjectId(userId);
+    const nonDraftFilter = { userId: uid, status: { $ne: 'draft' } };
 
-    const [statsRows, recentRaw, overdueRaw, draftCount, totalClients] = await Promise.all([
-        Invoice.aggregate([
-            { $match: nonDraftFilter },
-            {
-                $group: {
-                    _id: null,
-                    totalInvoices: { $sum: 1 },
-                    paidRevenue: {
-                        $sum: {
-                            $cond: [{ $eq: ['$status', 'paid'] }, { $ifNull: ['$total', 0] }, 0],
-                        },
-                    },
-                    pendingRevenue: {
-                        $sum: {
-                            $cond: [{ $eq: ['$status', 'pending'] }, { $ifNull: ['$total', 0] }, 0],
-                        },
-                    },
-                },
-            },
-        ]),
+    const [statsSource, recentRaw, overdueRaw, draftCount, totalClients] = await Promise.all([
+        Invoice.find(nonDraftFilter).select('status total').lean(),
         Invoice.find(nonDraftFilter)
             .select(SUMMARY_FIELDS)
             .sort({ createdAt: -1 })
             .limit(5)
             .lean(),
-        Invoice.find({ userId, status: 'overdue' })
+        Invoice.find({ userId: uid, status: 'overdue' })
             .select(SUMMARY_FIELDS)
             .sort({ dueDate: 1 })
             .lean(),
-        Invoice.countDocuments({ userId, status: 'draft' }),
-        Client.countDocuments({ userId }),
+        Invoice.countDocuments({ userId: uid, status: 'draft' }),
+        Client.countDocuments({ userId: uid }),
     ]);
 
-    const statsRow = statsRows[0] || {};
     const [recentInvoices, overdueInvoices] = await Promise.all([
         attachClientNames(recentRaw),
         attachClientNames(overdueRaw),
@@ -79,10 +74,10 @@ export async function getDashboardForUser(userId) {
 
     return {
         stats: {
-            totalInvoices: statsRow.totalInvoices || 0,
+            totalInvoices: statsSource.length,
             totalClients,
-            paidRevenue: statsRow.paidRevenue || 0,
-            pendingRevenue: statsRow.pendingRevenue || 0,
+            paidRevenue: sumRevenueForStatus(statsSource, 'paid'),
+            pendingRevenue: sumRevenueForStatus(statsSource, 'pending'),
             draftCount,
         },
         recentInvoices,
@@ -92,6 +87,7 @@ export async function getDashboardForUser(userId) {
 
 /** Lightweight counts for app shell (sidebar draft badge). */
 export async function getInvoiceMetaForUser(userId) {
-    const draftCount = await Invoice.countDocuments({ userId, status: 'draft' });
+    const uid = toUserObjectId(userId);
+    const draftCount = await Invoice.countDocuments({ userId: uid, status: 'draft' });
     return { draftCount };
 }
