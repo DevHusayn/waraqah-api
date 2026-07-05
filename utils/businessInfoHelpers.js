@@ -200,17 +200,35 @@ export function isPremiumActive(doc) {
     return new Date(o.premiumUntil) > new Date();
 }
 
-export function toBusinessInfoResponse(doc) {
+const EMPTY_ASSET_FIELDS = {
+    businessLogo: '',
+    companyLogoUrl: '',
+    companyLogoAvatarUrl: '',
+    companyStampUrl: '',
+    authorizedSignatureUrl: '',
+};
+
+export function toBusinessInfoResponse(doc, { includeAssets = true } = {}) {
     if (!doc) return null;
     const o = typeof doc.toObject === 'function' ? doc.toObject() : doc;
     const premium = isPremiumActive(o);
     const plan = premium ? PLANS.PREMIUM : PLANS.FREE;
-    const logo = premium ? resolveCompanyLogo(o) : '';
+    const logo = premium && includeAssets ? resolveCompanyLogo(o) : '';
 
     let invoiceTemplateId = o.invoiceTemplateId || DEFAULT_TEMPLATE_ID;
     if (!isTemplateAllowedForPlan(invoiceTemplateId, premium)) {
         invoiceTemplateId = DEFAULT_TEMPLATE_ID;
     }
+
+    const assets = includeAssets
+        ? {
+            businessLogo: logo,
+            companyLogoUrl: logo,
+            companyLogoAvatarUrl: premium ? (o.companyLogoAvatarUrl || '').trim() : '',
+            companyStampUrl: premium ? (o.companyStampUrl || '').trim() : '',
+            authorizedSignatureUrl: premium ? (o.authorizedSignatureUrl || '').trim() : '',
+        }
+        : EMPTY_ASSET_FIELDS;
 
     return {
         name: o.name || '',
@@ -226,11 +244,7 @@ export function toBusinessInfoResponse(doc) {
         subscriptionStatus: o.subscriptionStatus || null,
         subscriptionRenews: o.subscriptionStatus === 'active' && o.premiumUntil ? o.premiumUntil : null,
         paystackSubscriptionCode: o.paystackSubscriptionCode || '',
-        businessLogo: logo,
-        companyLogoUrl: logo,
-        companyLogoAvatarUrl: premium ? (o.companyLogoAvatarUrl || '').trim() : '',
-        companyStampUrl: premium ? (o.companyStampUrl || '').trim() : '',
-        authorizedSignatureUrl: premium ? (o.authorizedSignatureUrl || '').trim() : '',
+        ...assets,
         paymentAccountName: o.paymentAccountName || '',
         paymentBankName: o.paymentBankName || '',
         paymentAccountNumber: o.paymentAccountNumber || '',
@@ -238,6 +252,18 @@ export function toBusinessInfoResponse(doc) {
         invoiceTemplateId,
         autoEmailInvoices: Boolean(o.autoEmailInvoices),
         autoPaymentReminders: o.autoPaymentReminders !== false,
+    };
+}
+
+export function toBusinessAssetResponse(doc) {
+    const full = toBusinessInfoResponse(doc, { includeAssets: true });
+    if (!full) return EMPTY_ASSET_FIELDS;
+    return {
+        businessLogo: full.businessLogo,
+        companyLogoUrl: full.companyLogoUrl,
+        companyLogoAvatarUrl: full.companyLogoAvatarUrl,
+        companyStampUrl: full.companyStampUrl,
+        authorizedSignatureUrl: full.authorizedSignatureUrl,
     };
 }
 

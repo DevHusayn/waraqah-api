@@ -6,6 +6,7 @@ import asyncHandler from '../middleware/asyncHandler.js';
 import {
     pickAllowedBusinessUpdates,
     toBusinessInfoResponse,
+    toBusinessAssetResponse,
     applyPremiumLogoRules,
     defaultBusinessInfoFields,
     isPremiumActive,
@@ -23,10 +24,17 @@ async function getOrCreateBusinessInfo(userId) {
     return info;
 }
 
-// Get business info for user
+// Premium branding assets (large base64 payloads) — load separately from summary.
+router.get('/assets', auth, asyncHandler(async (req, res) => {
+    const info = await getOrCreateBusinessInfo(req.user.userId);
+    res.json(toBusinessAssetResponse(info));
+}));
+
+// Get business info for user (?summary=1 omits heavy asset fields)
 router.get('/', auth, asyncHandler(async (req, res) => {
     const info = await getOrCreateBusinessInfo(req.user.userId);
-    res.json(toBusinessInfoResponse(info));
+    const summary = req.query.summary === '1' || req.query.summary === 'true';
+    res.json(toBusinessInfoResponse(info, { includeAssets: !summary }));
 }));
 
 // Update business info (plan cannot be changed here — admin/billing only)

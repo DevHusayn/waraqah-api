@@ -28,6 +28,12 @@ export function validateEnv() {
         warnings.push('ALLOW_DEV_PLAN is enabled — do not use in production.');
     }
 
+    if (isProduction() && process.env.VERCEL_REGION && process.env.MONGO_URI?.includes('mongodb')) {
+        warnings.push(
+            `For lowest latency, deploy MongoDB Atlas in the same region as Vercel (${process.env.VERCEL_REGION}).`
+        );
+    }
+
     return { errors, warnings };
 }
 

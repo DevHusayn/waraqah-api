@@ -38,7 +38,7 @@ import {
     computeDaysUntilDue,
 } from '../src/emails/helpers/invoiceContext.js';
 import { attachPublicTokenIfNeeded, ensureInvoicePublicToken } from '../utils/invoicePublicToken.js';
-import { syncOverdueInvoicesForUser } from '../utils/invoiceOverdue.js';
+import { getDashboardForUser, getInvoiceMetaForUser } from '../utils/dashboardStats.js';
 import asyncHandler from '../middleware/asyncHandler.js';
 
 const router = express.Router();
@@ -60,10 +60,23 @@ router.get('/usage', auth, async (req, res) => {
     }
 });
 
-// Get all invoices for user
+// Dashboard overview (stats + recent + overdue — no full list)
+router.get('/dashboard', auth, asyncHandler(async (req, res) => {
+    const dashboard = await getDashboardForUser(req.user.userId);
+    res.json(dashboard);
+}));
+
+// App shell metadata (draft badge, etc.)
+router.get('/meta', auth, asyncHandler(async (req, res) => {
+    const meta = await getInvoiceMetaForUser(req.user.userId);
+    res.json(meta);
+}));
+
+// Get all invoices for user (list summaries — line items loaded on detail/edit)
 router.get('/', auth, asyncHandler(async (req, res) => {
-    await syncOverdueInvoicesForUser(req.user.userId);
-    const invoices = await Invoice.find({ userId: req.user.userId }).lean();
+    const invoices = await Invoice.find({ userId: req.user.userId })
+        .select('-items -notes')
+        .lean();
     res.json(invoices);
 }));
 

@@ -20,3 +20,18 @@ export async function syncOverdueInvoicesForUser(userId) {
         { $set: { status: 'overdue' } }
     );
 }
+
+/** Global overdue sync for scheduled jobs (all users). */
+export async function syncAllOverdueInvoices() {
+    const today = todayDateString();
+    const result = await Invoice.updateMany(
+        {
+            status: 'pending',
+            dueDate: { $exists: true, $nin: [null, ''], $lt: today },
+        },
+        { $set: { status: 'overdue' } }
+    );
+    return {
+        modifiedCount: result.modifiedCount ?? result.nModified ?? 0,
+    };
+}

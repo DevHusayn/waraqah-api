@@ -4,6 +4,10 @@
     "routes": [{ "src": "/(.*)", "dest": "index.js" }],
     "crons": [
         {
+            "path": "/api/cron/overdue-sync",
+            "schedule": "0 0 * * *"
+        },
+        {
             "path": "/api/cron/payment-reminders",
             "schedule": "0 9 * * *"
         }
