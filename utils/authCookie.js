@@ -72,13 +72,14 @@ export function clearAuthCookies(res) {
 }
 
 export function getTokenFromRequest(req) {
-    const cookieToken = req.cookies?.[SESSION_COOKIE_NAME];
-    if (cookieToken) return cookieToken;
-
     const authHeader = req.headers.authorization;
     if (authHeader?.startsWith('Bearer ')) {
-        return authHeader.split(' ')[1];
+        const bearer = authHeader.split(' ')[1];
+        if (bearer) return bearer;
     }
+
+    const cookieToken = req.cookies?.[SESSION_COOKIE_NAME];
+    if (cookieToken) return cookieToken;
 
     return null;
 }
