@@ -277,6 +277,15 @@ export function applyPremiumLogoRules(updates, existingDoc) {
     return updates;
 }
 
+export function isBusinessSetupComplete(info = {}) {
+    const name = String(info.name || '').trim();
+    const address = String(info.address || '').trim();
+    const email = String(info.email || '').trim();
+    const phone = String(info.phone || '').trim();
+    if (!name || !address || !email || !phone) return false;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 export const defaultBusinessInfoFields = {
     name: '',
     address: '',

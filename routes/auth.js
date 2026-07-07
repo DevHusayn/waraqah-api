@@ -6,7 +6,12 @@ import User from '../models/User.js';
 import BusinessInfo from '../models/CompanyInfo.js';
 import auth from '../middleware/auth.js';
 import validateObjectId from '../middleware/validateObjectId.js';
-import { defaultBusinessInfoFields, PLANS, toBusinessInfoResponse } from '../utils/businessInfoHelpers.js';
+import {
+    defaultBusinessInfoFields,
+    isBusinessSetupComplete,
+    PLANS,
+    toBusinessInfoResponse,
+} from '../utils/businessInfoHelpers.js';
 import Invoice from '../models/Invoice.js';
 import Client from '../models/Client.js';
 import {
@@ -62,10 +67,21 @@ function toPublicUser(user, extra = {}) {
         id: user._id,
         email: user.email,
         name: user.name,
+        authProvider: user.authProvider || 'local',
         isAdmin: user.isAdmin,
         status: user.status,
         emailVerified,
         ...extra,
+    };
+}
+
+async function buildOAuthLoginResponse(res, user, { isNewUser = false } = {}) {
+    const businessInfo = await BusinessInfo.findOne({ userId: user._id }).lean();
+    const session = await completeAuthSession(res, user);
+    return {
+        ...session,
+        isNewUser,
+        needsBusinessSetup: !isBusinessSetupComplete(businessInfo),
     };
 }
 
@@ -564,8 +580,8 @@ router.post('/google', loginLimiter, async (req, res) => {
         }
 
         const profile = await verifyGoogleCredential(credential);
-        const user = await findOrCreateOAuthUser(profile);
-        const session = await completeAuthSession(res, user);
+        const { user, isNewUser } = await findOrCreateOAuthUser(profile);
+        const session = await buildOAuthLoginResponse(res, user, { isNewUser });
         res.json(session);
     } catch (err) {
         if (err.status === 503) {
@@ -592,8 +608,8 @@ router.post('/apple', loginLimiter, async (req, res) => {
             profile.name = name;
         }
 
-        const user = await findOrCreateOAuthUser(profile);
-        const session = await completeAuthSession(res, user);
+        const { user, isNewUser } = await findOrCreateOAuthUser(profile);
+        const session = await buildOAuthLoginResponse(res, user, { isNewUser });
         res.json(session);
     } catch (err) {
         if (err.status === 503) {

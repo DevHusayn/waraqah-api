@@ -85,7 +85,7 @@ export async function findOrCreateOAuthUser(profile) {
             user.emailVerificationExpires = undefined;
             await user.save();
         }
-        return user;
+        return { user, isNewUser: false };
     }
 
     if (profile.email) {
@@ -106,7 +106,7 @@ export async function findOrCreateOAuthUser(profile) {
                 user.emailVerificationExpires = undefined;
             }
             await user.save();
-            return user;
+            return { user, isNewUser: false };
         }
     }
 
@@ -134,7 +134,7 @@ export async function findOrCreateOAuthUser(profile) {
         name: profile.name || '',
     });
 
-    return user;
+    return { user, isNewUser: true };
 }
 
 export function getOAuthConfig() {
