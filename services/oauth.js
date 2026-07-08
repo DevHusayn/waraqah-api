@@ -1,7 +1,6 @@
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { OAuth2Client } from 'google-auth-library';
-import verifyAppleToken from 'verify-apple-id-token';
 import User from '../models/User.js';
 import BusinessInfo from '../models/CompanyInfo.js';
 import { defaultBusinessInfoFields } from '../utils/businessInfoHelpers.js';
@@ -41,37 +40,12 @@ export async function verifyGoogleCredential(credential) {
     };
 }
 
-export async function verifyAppleCredential(identityToken) {
-    const clientId = process.env.APPLE_CLIENT_ID?.trim();
-    if (!clientId) {
-        throw oauthNotConfigured('Apple');
-    }
-
-    const payload = await verifyAppleToken({
-        idToken: identityToken,
-        clientId,
-    });
-
-    if (!payload?.sub) {
-        throw new Error('Apple did not return a valid account.');
-    }
-
-    return {
-        provider: 'apple',
-        providerId: payload.sub,
-        email: payload.email ? normalizeEmail(payload.email) : '',
-        name: '',
-        emailVerified: true,
-    };
-}
-
 async function randomPasswordHash() {
     return bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
 }
 
 export async function findOrCreateOAuthUser(profile) {
-    const idField = profile.provider === 'google' ? 'googleId' : 'appleId';
-    let user = await User.findOne({ [idField]: profile.providerId });
+    let user = await User.findOne({ googleId: profile.providerId });
 
     if (user) {
         if (user.status === 'suspended') {
@@ -96,7 +70,7 @@ export async function findOrCreateOAuthUser(profile) {
                 err.status = 403;
                 throw err;
             }
-            user[idField] = profile.providerId;
+            user.googleId = profile.providerId;
             if (user.authProvider === 'local') {
                 user.authProvider = profile.provider;
             }
@@ -111,9 +85,7 @@ export async function findOrCreateOAuthUser(profile) {
     }
 
     if (!profile.email) {
-        const err = new Error(
-            'Apple did not share an email address. Remove this app from Apple ID settings and try again, allowing email sharing.',
-        );
+        const err = new Error('Google did not return a valid account email.');
         err.status = 400;
         throw err;
     }
@@ -123,7 +95,7 @@ export async function findOrCreateOAuthUser(profile) {
         password: await randomPasswordHash(),
         name: profile.name || profile.email.split('@')[0],
         authProvider: profile.provider,
-        [idField]: profile.providerId,
+        googleId: profile.providerId,
         emailVerified: profile.emailVerified,
     });
 
@@ -140,6 +112,5 @@ export async function findOrCreateOAuthUser(profile) {
 export function getOAuthConfig() {
     return {
         google: Boolean(process.env.GOOGLE_CLIENT_ID?.trim()),
-        apple: Boolean(process.env.APPLE_CLIENT_ID?.trim()),
     };
 }

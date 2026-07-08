@@ -42,7 +42,6 @@ import {
 import { setAuthCookies, clearAuthCookies, getTokenFromRequest, ensureCsrfCookie } from '../utils/authCookie.js';
 import {
     verifyGoogleCredential,
-    verifyAppleCredential,
     findOrCreateOAuthUser,
     getOAuthConfig,
 } from '../services/oauth.js';
@@ -303,7 +302,7 @@ router.post('/login', loginLimiter, async (req, res) => {
         // Check password
         if (!user.password) {
             return res.status(401).json({
-                message: 'This account uses Google or Apple sign-in. Continue with that provider below.',
+                message: 'This account uses Google sign-in. Continue with Google below.',
             });
         }
 
@@ -595,33 +594,6 @@ router.post('/google', loginLimiter, async (req, res) => {
     }
 });
 
-router.post('/apple', loginLimiter, async (req, res) => {
-    try {
-        const identityToken = req.body?.identityToken;
-        const name = sanitizePlainText(req.body?.name, 120);
-        if (!identityToken) {
-            return res.status(400).json({ message: 'Apple identity token is required.' });
-        }
-
-        const profile = await verifyAppleCredential(identityToken);
-        if (name && !profile.name) {
-            profile.name = name;
-        }
-
-        const { user, isNewUser } = await findOrCreateOAuthUser(profile);
-        const session = await buildOAuthLoginResponse(res, user, { isNewUser });
-        res.json(session);
-    } catch (err) {
-        if (err.status === 503) {
-            return res.status(503).json({ message: err.message });
-        }
-        if (err.status === 403 || err.status === 400) {
-            return res.status(err.status).json({ message: err.message });
-        }
-        console.error('Apple sign-in error:', err);
-        return res.status(401).json({ message: 'Apple sign-in failed. Please try again.' });
-    }
-});
 
 // Admin: set user plan (free | premium)
 router.patch('/admin/users/:id/plan', auth, validateObjectId(), async (req, res) => {

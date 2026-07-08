@@ -9,7 +9,6 @@ const CSRF_EXEMPT_PREFIXES = [
     '/auth/verify-email',
     '/auth/resend-verification-email',
     '/auth/google',
-    '/auth/apple',
     '/payments/webhook',
 ];
 

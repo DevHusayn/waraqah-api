@@ -6,11 +6,10 @@ const userSchema = new mongoose.Schema({
     name: { type: String },
     authProvider: {
         type: String,
-        enum: ['local', 'google', 'apple'],
+        enum: ['local', 'google'],
         default: 'local',
     },
     googleId: { type: String, unique: true, sparse: true },
-    appleId: { type: String, unique: true, sparse: true },
     isAdmin: { type: Boolean, default: false },
     status: { type: String, enum: ['active', 'suspended'], default: 'active' },
     lastLogin: { type: Date },
