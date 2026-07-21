@@ -41,10 +41,12 @@ function sanitizeInvoiceItem(item) {
     if (!item || typeof item !== 'object') {
         throw validationError('Invalid invoice line item.');
     }
+    const unit = sanitizePlainText(item.unit, 40) || 'Qty';
     return {
         description: sanitizePlainText(item.description, 500),
         quantity: sanitizeNumber(item.quantity, { min: 0, max: 1_000_000, fallback: 0 }),
         rate: sanitizeNumber(item.rate, { min: 0, max: 1_000_000_000, fallback: 0 }),
+        unit,
     };
 }
 

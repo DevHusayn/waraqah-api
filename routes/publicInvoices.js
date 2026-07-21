@@ -73,6 +73,7 @@ function sanitizePublicInvoice(invoice) {
             description: item.description,
             quantity: item.quantity,
             rate: item.rate,
+            unit: item.unit || 'Qty',
         })),
         notes: invoice.notes || '',
         currency: invoice.currency || 'NGN',

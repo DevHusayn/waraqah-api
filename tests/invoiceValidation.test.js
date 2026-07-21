@@ -29,7 +29,7 @@ test('sanitizeInvoicePayload disables recurring invoices', () => {
 test('sanitizeInvoicePayload accepts valid draft invoice', () => {
     const payload = sanitizeInvoicePayload({
         status: 'draft',
-        items: [{ description: 'Design work', quantity: 2, rate: 25000 }],
+        items: [{ description: 'Design work', quantity: 2, rate: 25000, unit: 'Hours' }],
         taxRate: 7.5,
         discountType: 'percent',
         discountValue: 10,
@@ -38,6 +38,16 @@ test('sanitizeInvoicePayload accepts valid draft invoice', () => {
     assert.equal(payload.status, 'draft');
     assert.equal(payload.items.length, 1);
     assert.equal(payload.items[0].description, 'Design work');
+    assert.equal(payload.items[0].unit, 'Hours');
+});
+
+test('sanitizeInvoicePayload defaults missing unit to Qty', () => {
+    const payload = sanitizeInvoicePayload({
+        status: 'draft',
+        items: [{ description: 'Widget', quantity: 1, rate: 100 }],
+    });
+
+    assert.equal(payload.items[0].unit, 'Qty');
 });
 
 test('assertInvoiceDeleteAllowed rejects paid invoices', () => {
