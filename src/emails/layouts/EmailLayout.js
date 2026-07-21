@@ -5,13 +5,12 @@ import {
     Head,
     Hr,
     Html,
-    Img,
     Link,
     Preview,
     Section,
     Text,
 } from '@react-email/components';
-import { BRAND, getCopyrightYear, getLogoUrl, getSupportEmail, getWebsiteUrl } from '../config.js';
+import { BRAND, getCopyrightYear, getSupportEmail, getWebsiteUrl } from '../config.js';
 
 /**
  * Shared layout for all Waraqah transactional emails.
@@ -21,7 +20,6 @@ import { BRAND, getCopyrightYear, getLogoUrl, getSupportEmail, getWebsiteUrl } f
  * @param {React.ReactNode} props.children - Email body content
  */
 export default function EmailLayout({ preview, children }) {
-    const logoUrl = getLogoUrl();
     const websiteUrl = getWebsiteUrl();
     const supportEmail = getSupportEmail();
     const year = getCopyrightYear();
@@ -40,15 +38,7 @@ export default function EmailLayout({ preview, children }) {
                 React.createElement(
                     Section,
                     { style: styles.header },
-                    logoUrl
-                        ? React.createElement(Img, {
-                            src: logoUrl,
-                            alt: BRAND.name,
-                            width: 140,
-                            height: 40,
-                            style: styles.logo,
-                        })
-                        : React.createElement(Text, { style: styles.logoText }, BRAND.name),
+                    React.createElement(Text, { style: styles.logoText }, BRAND.name),
                 ),
                 React.createElement(Section, { style: styles.content }, children),
                 React.createElement(Hr, { style: styles.divider }),
@@ -174,14 +164,11 @@ const styles = {
         padding: '24px 32px',
         textAlign: 'center',
     },
-    logo: {
-        margin: '0 auto',
-        display: 'block',
-    },
     logoText: {
         margin: 0,
         fontSize: '22px',
         fontWeight: 700,
+        fontStyle: 'italic',
         color: BRAND.accentDark,
     },
     content: {
