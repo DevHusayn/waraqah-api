@@ -7,4 +7,6 @@ const productSchema = new mongoose.Schema({
     unitPrice: { type: Number, default: 0 },
 }, { timestamps: true });
 
+productSchema.index({ userId: 1, name: 1 });
+
 export default mongoose.model('Product', productSchema);

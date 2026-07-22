@@ -40,15 +40,96 @@ import {
 import { attachPublicTokenIfNeeded, ensureInvoicePublicToken } from '../utils/invoicePublicToken.js';
 import { getDashboardForUser, getInvoiceMetaForUser } from '../utils/dashboardStats.js';
 import asyncHandler from '../middleware/asyncHandler.js';
+import Client from '../models/Client.js';
+import mongoose from 'mongoose';
+import {
+    parsePagination,
+    paginateFind,
+    buildPaginationMeta,
+    buildSearchFilter,
+    escapeRegex,
+} from '../utils/pagination.js';
 
 const router = express.Router();
 
 const PAID = 'paid';
 
+const INVOICE_SORT = {
+    newest: { createdAt: -1 },
+    oldest: { createdAt: 1 },
+    dueDate: { dueDate: 1 },
+    amountHigh: { total: -1 },
+    amountLow: { total: 1 },
+};
+
 const numberGenerators = {
     getNextInvoiceNumber,
     getNextReceiptNumber,
 };
+
+function toUserObjectId(userId) {
+    if (userId instanceof mongoose.Types.ObjectId) return userId;
+    return new mongoose.Types.ObjectId(String(userId));
+}
+
+async function attachClientNames(invoices, userId) {
+    const clientIds = [
+        ...new Set(
+            invoices
+                .map((inv) => inv.clientId)
+                .filter(Boolean)
+                .map((id) => String(id))
+        ),
+    ];
+    if (clientIds.length === 0) {
+        return invoices.map((inv) => ({ ...inv, clientName: null }));
+    }
+    const clients = await Client.find({
+        userId,
+        _id: { $in: clientIds },
+    })
+        .select('name company')
+        .lean();
+    const byId = new Map(clients.map((c) => [String(c._id), c]));
+    return invoices.map((inv) => {
+        const client = inv.clientId ? byId.get(String(inv.clientId)) : null;
+        return {
+            ...inv,
+            clientName: client?.name || null,
+            clientCompany: client?.company || null,
+        };
+    });
+}
+
+async function getInvoiceStatusCounts(userId) {
+    const uid = toUserObjectId(userId);
+    const rows = await Invoice.aggregate([
+        { $match: { userId: uid, status: { $ne: 'draft' } } },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]);
+    const statusCounts = { all: 0, pending: 0, paid: 0, overdue: 0, cancelled: 0 };
+    for (const row of rows) {
+        const key = row._id;
+        if (key && Object.prototype.hasOwnProperty.call(statusCounts, key)) {
+            statusCounts[key] = row.count;
+        }
+        statusCounts.all += row.count;
+    }
+    return statusCounts;
+}
+
+async function resolveInvoiceSearchClientIds(userId, search) {
+    const q = String(search || '').trim();
+    if (!q) return [];
+    const regex = new RegExp(escapeRegex(q), 'i');
+    const clients = await Client.find({
+        userId,
+        $or: [{ name: regex }, { company: regex }, { email: regex }],
+    })
+        .select('_id')
+        .lean();
+    return clients.map((c) => c._id);
+}
 
 // Monthly invoice quota (free plan)
 router.get('/usage', auth, async (req, res) => {
@@ -72,20 +153,98 @@ router.get('/meta', auth, asyncHandler(async (req, res) => {
     res.json(meta);
 }));
 
-// Get all invoices for user (list summaries — line items loaded on detail/edit)
+// Paginated invoice list (non-drafts) — line items loaded on detail/edit
 router.get('/', auth, asyncHandler(async (req, res) => {
-    const invoices = await Invoice.find({ userId: req.user.userId })
-        .select('-items -notes')
-        .lean();
-    res.json(invoices);
+    const userId = req.user.userId;
+    const { page, limit, skip } = parsePagination(req);
+    const status = String(req.query.status || 'all').trim().toLowerCase();
+    const sortKey = String(req.query.sort || 'newest').trim();
+    const sort = INVOICE_SORT[sortKey] || INVOICE_SORT.newest;
+    const search = String(req.query.search || '').trim();
+    const year = Number.parseInt(String(req.query.year || ''), 10);
+    const month = Number.parseInt(String(req.query.month || ''), 10);
+
+    const filter = { userId, status: { $ne: 'draft' } };
+    if (status && status !== 'all') {
+        filter.status = status;
+    }
+
+    if (Number.isFinite(year) && Number.isFinite(month) && month >= 1 && month <= 12) {
+        const startStr = `${year}-${String(month).padStart(2, '0')}-01`;
+        const nextMonth = month === 12 ? 1 : month + 1;
+        const nextYear = month === 12 ? year + 1 : year;
+        const endStr = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+        filter.date = { $gte: startStr, $lt: endStr };
+    }
+
+    if (search) {
+        const clientIds = await resolveInvoiceSearchClientIds(userId, search);
+        const textFilter = buildSearchFilter(search, [
+            'invoiceNumber',
+            'receiptNumber',
+        ]);
+        const or = [...(textFilter?.$or || [])];
+        if (clientIds.length > 0) {
+            or.push({ clientId: { $in: clientIds } });
+        }
+        // Also match total as string-ish via regex on stringified number is awkward;
+        // keep number/receipt + client name search as primary.
+        if (or.length > 0) {
+            filter.$or = or;
+        }
+    }
+
+    const [{ data, total }, statusCounts] = await Promise.all([
+        paginateFind(Invoice, filter, {
+            skip,
+            limit,
+            sort,
+            select: '-items -notes',
+            lean: true,
+        }),
+        getInvoiceStatusCounts(userId),
+    ]);
+
+    const withClients = await attachClientNames(data, userId);
+    res.json({
+        data: withClients,
+        pagination: buildPaginationMeta(page, limit, total),
+        statusCounts,
+    });
 }));
 
-// Draft invoices only
+// Paginated draft invoices
 router.get('/drafts', auth, asyncHandler(async (req, res) => {
-    const drafts = await Invoice.find({ userId: req.user.userId, status: 'draft' }).sort({
-        updatedAt: -1,
+    const userId = req.user.userId;
+    const { page, limit, skip } = parsePagination(req);
+    const search = String(req.query.search || '').trim();
+
+    const filter = { userId, status: 'draft' };
+    if (search) {
+        const clientIds = await resolveInvoiceSearchClientIds(userId, search);
+        const textFilter = buildSearchFilter(search, ['invoiceNumber', 'receiptNumber']);
+        const or = [...(textFilter?.$or || [])];
+        if (clientIds.length > 0) {
+            or.push({ clientId: { $in: clientIds } });
+        }
+        if (or.length > 0) {
+            filter.$or = or;
+        }
+    }
+
+    const { data, total } = await paginateFind(Invoice, filter, {
+        skip,
+        limit,
+        sort: { updatedAt: -1 },
+        select: '-items -notes',
+        lean: true,
     });
-    res.json(drafts);
+
+    const withClients = await attachClientNames(data, userId);
+    res.json({
+        data: withClients,
+        pagination: buildPaginationMeta(page, limit, total),
+    });
 }));
 
 // Next sequential invoice number for this user (INV-0001, …)

@@ -100,7 +100,7 @@ export function sanitizeClientPayload(body) {
 
     return {
         name,
-        company: sanitizePlainText(body.company, 200),
+        company: sanitizePlainText(body.company ?? body.business, 200),
         email: body.email ? sanitizeOptionalEmail(body.email) : '',
         phone: sanitizePlainText(body.phone, 50),
         address: sanitizePlainText(body.address, 500),
@@ -124,8 +124,8 @@ export function sanitizeClientUpdates(body) {
         }
         updates.name = name;
     }
-    if (body.company !== undefined) {
-        updates.company = sanitizePlainText(body.company, 200);
+    if (body.company !== undefined || body.business !== undefined) {
+        updates.company = sanitizePlainText(body.company ?? body.business, 200);
     }
     if (body.email !== undefined) {
         updates.email = body.email ? sanitizeOptionalEmail(body.email) : '';

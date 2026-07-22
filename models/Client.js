@@ -9,4 +9,6 @@ const clientSchema = new mongoose.Schema({
     address: String,
 }, { timestamps: true });
 
+clientSchema.index({ userId: 1, name: 1 });
+
 export default mongoose.model('Client', clientSchema);

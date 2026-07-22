@@ -8,6 +8,7 @@ const DRAFT = 'draft';
 const CANCELLABLE = ['pending', 'overdue'];
 const STATUSES = ['draft', 'pending', 'paid', 'overdue', 'cancelled'];
 const RECURRING_FREQUENCIES = ['weekly', 'bi-weekly', 'monthly', 'quarterly', 'yearly'];
+const SUPPORTED_CURRENCIES = ['NGN', 'GHS', 'ZAR', 'KES', 'USD', 'EUR'];
 const MAX_ITEMS = 100;
 const ALLOWED_INVOICE_FIELDS = [
     'clientId',
@@ -103,7 +104,18 @@ export function sanitizeInvoicePayload(body) {
     data.datePaid = data.datePaid !== undefined ? sanitizePlainText(data.datePaid, 32) : undefined;
     data.recurringEndDate =
         data.recurringEndDate !== undefined ? sanitizePlainText(data.recurringEndDate, 32) : undefined;
-    data.currency = data.currency !== undefined ? sanitizePlainText(data.currency, 8) : undefined;
+    data.currency =
+        data.currency !== undefined
+            ? (() => {
+                  const code = sanitizePlainText(data.currency, 8).toUpperCase();
+                  if (!SUPPORTED_CURRENCIES.includes(code)) {
+                      throw validationError(
+                          `Currency must be one of: ${SUPPORTED_CURRENCIES.join(', ')}.`
+                      );
+                  }
+                  return code;
+              })()
+            : undefined;
 
     if (data.taxRate !== undefined) {
         data.taxRate = sanitizeNumber(data.taxRate, { min: 0, max: 100, fallback: 0 });

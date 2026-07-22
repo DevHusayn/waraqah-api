@@ -45,6 +45,11 @@ import {
     findOrCreateOAuthUser,
     getOAuthConfig,
 } from '../services/oauth.js';
+import {
+    parsePagination,
+    buildPaginationMeta,
+    escapeRegex,
+} from '../utils/pagination.js';
 
 const router = express.Router();
 
@@ -165,18 +170,36 @@ router.get('/admin/users', auth, async (req, res) => {
         if (!adminUser || !adminUser.isAdmin) {
             return res.status(403).json({ message: 'Forbidden: Admins only' });
         }
-        const users = await User.find({}, '-password');
-        const businessInfos = await BusinessInfo.find({});
 
-        // Get invoice and client counts for each user
-        const invoiceCounts = await Invoice.aggregate([
-            { $group: { _id: '$userId', count: { $sum: 1 } } }
-        ]);
-        const clientCounts = await Client.aggregate([
-            { $group: { _id: '$userId', count: { $sum: 1 } } }
+        const { page, limit, skip } = parsePagination(req);
+        const search = String(req.query.search || '').trim();
+        const filter = {};
+        if (search) {
+            const regex = new RegExp(escapeRegex(search), 'i');
+            filter.$or = [{ email: regex }, { name: regex }];
+        }
+
+        const [users, total, totalUsers, premiumCount, suspendedCount] = await Promise.all([
+            User.find(filter, '-password').sort({ createdAt: -1 }).skip(skip).limit(limit),
+            User.countDocuments(filter),
+            User.countDocuments({}),
+            BusinessInfo.countDocuments({ plan: 'premium' }),
+            User.countDocuments({ status: 'suspended' }),
         ]);
 
-        const invoiceUsageByUser = await getInvoiceUsageMapForUsers(users.map((u) => u._id));
+        const userIds = users.map((u) => u._id);
+        const [businessInfos, invoiceCounts, clientCounts, invoiceUsageByUser] = await Promise.all([
+            BusinessInfo.find({ userId: { $in: userIds } }),
+            Invoice.aggregate([
+                { $match: { userId: { $in: userIds } } },
+                { $group: { _id: '$userId', count: { $sum: 1 } } },
+            ]),
+            Client.aggregate([
+                { $match: { userId: { $in: userIds } } },
+                { $group: { _id: '$userId', count: { $sum: 1 } } },
+            ]),
+            getInvoiceUsageMapForUsers(userIds),
+        ]);
 
         const usersWithDetails = users.map((user) => {
             const businessInfo =
@@ -194,7 +217,15 @@ router.get('/admin/users', auth, async (req, res) => {
                 invoiceUsage,
             };
         });
-        res.json(usersWithDetails);
+        res.json({
+            data: usersWithDetails,
+            pagination: buildPaginationMeta(page, limit, total),
+            summary: {
+                total: totalUsers,
+                premium: premiumCount,
+                suspended: suspendedCount,
+            },
+        });
     } catch (err) {
         return sendServerError(res, err);
     }

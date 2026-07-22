@@ -23,6 +23,11 @@ import {
     notifyPremiumPaymentFailed,
     notifyPremiumSubscriptionCancelled,
 } from '../src/emails/helpers/premiumNotifications.js';
+import {
+    parsePagination,
+    paginateFind,
+    buildPaginationMeta,
+} from '../utils/pagination.js';
 
 const router = express.Router();
 
@@ -156,11 +161,21 @@ router.get('/plan', auth, async (req, res) => {
 /** Billing history for the authenticated user */
 router.get('/history', auth, async (req, res) => {
     try {
-        const payments = await Payment.find({ userId: req.user.userId })
-            .sort({ paidAt: -1, createdAt: -1 })
-            .limit(50)
-            .lean();
-        res.json(payments.map(formatPaymentForClient));
+        const { page, limit, skip } = parsePagination(req);
+        const { data, total } = await paginateFind(
+            Payment,
+            { userId: req.user.userId },
+            {
+                skip,
+                limit,
+                sort: { paidAt: -1, createdAt: -1 },
+                lean: true,
+            }
+        );
+        res.json({
+            data: data.map(formatPaymentForClient),
+            pagination: buildPaginationMeta(page, limit, total),
+        });
     } catch (err) {
         res.status(500).json({ message: err.message || 'Could not load billing history' });
     }
