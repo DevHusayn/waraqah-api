@@ -12,6 +12,7 @@ import {
 } from './src/emails/helpers/invoiceContext.js';
 import { ensureInvoicePublicToken } from './utils/invoicePublicToken.js';
 import { notifyOwnerInvoiceReminderSent } from './src/emails/helpers/ownerNotifications.js';
+import { getInvoiceBalanceDue } from './utils/invoicePayments.js';
 
 /** Send reminders for invoices due within 7 days or already overdue. */
 const REMINDER_WINDOW_DAYS = 7;
@@ -23,7 +24,7 @@ async function sendDuePaymentReminders() {
     windowEnd.setDate(windowEnd.getDate() + REMINDER_WINDOW_DAYS);
 
     const candidates = await Invoice.find({
-        status: { $in: ['pending', 'overdue'] },
+        status: { $in: ['pending', 'partial', 'overdue'] },
         dueDate: { $exists: true, $ne: '' },
         clientId: { $ne: null },
     });
@@ -55,7 +56,7 @@ async function sendDuePaymentReminders() {
                 to: ctx.to,
                 customerName: ctx.customerName,
                 invoiceNumber: invoice.invoiceNumber,
-                amountOutstanding: invoice.total,
+                amountOutstanding: getInvoiceBalanceDue(invoice),
                 currency: invoice.currency || 'NGN',
                 dueDate: invoice.dueDate,
                 daysUntilDue,

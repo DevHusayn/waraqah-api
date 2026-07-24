@@ -26,6 +26,21 @@ const invoiceSchema = new mongoose.Schema({
         default: undefined,
     },
     datePaid: { type: String, default: null },
+    /** Sum of recorded installment payments. */
+    amountPaid: { type: Number, default: 0 },
+    payments: [
+        {
+            amount: { type: Number, required: true },
+            method: {
+                type: String,
+                enum: ['cash', 'bank_transfer', 'pos', 'card', 'online_gateway'],
+                required: true,
+            },
+            date: { type: String, required: true },
+            note: { type: String, default: '' },
+            createdAt: { type: Date, default: Date.now },
+        },
+    ],
     currency: String,
     taxRate: Number,
     discountType: { type: String, enum: ['fixed', 'percent'], default: 'fixed' },

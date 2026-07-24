@@ -1,15 +1,27 @@
 import { getNextInvoiceNumber, receiptFromInvoiceNumber } from './invoiceNumber.js';
 import { isValidObjectId, sanitizeNumber, sanitizePlainText } from './sanitize.js';
+import { getInvoiceAmountPaid } from './invoicePayments.js';
 
 const PAYMENT_METHODS = ['cash', 'bank_transfer', 'pos', 'card', 'online_gateway'];
 const PAID = 'paid';
 const CANCELLED = 'cancelled';
 const DRAFT = 'draft';
-const CANCELLABLE = ['pending', 'overdue'];
-const STATUSES = ['draft', 'pending', 'paid', 'overdue', 'cancelled'];
+const PARTIAL = 'partial';
+const CANCELLABLE = ['pending', 'partial', 'overdue'];
+const STATUSES = ['draft', 'pending', 'partial', 'paid', 'overdue', 'cancelled'];
 const RECURRING_FREQUENCIES = ['weekly', 'bi-weekly', 'monthly', 'quarterly', 'yearly'];
 const SUPPORTED_CURRENCIES = ['NGN', 'GHS', 'ZAR', 'KES', 'USD', 'EUR'];
 const MAX_ITEMS = 100;
+const TOTAL_FIELDS = [
+    'items',
+    'subtotal',
+    'tax',
+    'total',
+    'taxRate',
+    'discount',
+    'discountValue',
+    'discountType',
+];
 const ALLOWED_INVOICE_FIELDS = [
     'clientId',
     'date',
@@ -151,6 +163,24 @@ export function isDraftStatus(status) {
     return status === DRAFT;
 }
 
+function totalsMeaningfullyChanged(existing, payload) {
+    for (const field of TOTAL_FIELDS) {
+        if (payload[field] === undefined) continue;
+        if (field === 'items') {
+            const prevItems = JSON.stringify(existing.items || []);
+            const nextItems = JSON.stringify(payload.items || []);
+            if (prevItems !== nextItems) return true;
+            continue;
+        }
+        if (field === 'discountType') {
+            if (String(payload[field] || '') !== String(existing[field] || '')) return true;
+            continue;
+        }
+        if (Number(payload[field]) !== Number(existing[field] ?? 0)) return true;
+    }
+    return false;
+}
+
 /** Block illegal status transitions and edits on terminal invoices. */
 export function assertInvoiceUpdateAllowed(existing, payload) {
     const prev = existing.status || 'pending';
@@ -173,7 +203,19 @@ export function assertInvoiceUpdateAllowed(existing, payload) {
     }
 
     if (next === CANCELLED && !CANCELLABLE.includes(prev)) {
-        throw validationError('Only pending or overdue invoices can be cancelled.');
+        throw validationError('Only pending, partial, or overdue invoices can be cancelled.');
+    }
+
+    // Status transitions to partial should go through POST /payments.
+    if (next === PARTIAL && prev !== PARTIAL) {
+        throw validationError('Record a payment to mark an invoice as partially paid.');
+    }
+
+    const amountPaid = getInvoiceAmountPaid(existing);
+    if (amountPaid > 0 && totalsMeaningfullyChanged(existing, payload)) {
+        throw validationError(
+            'Invoices with recorded payments cannot change amounts or line items.'
+        );
     }
 }
 
@@ -187,6 +229,10 @@ export function assertInvoiceDeleteAllowed(existing) {
 
     if (status === CANCELLED) {
         throw validationError('Cancelled invoices cannot be deleted.');
+    }
+
+    if (getInvoiceAmountPaid(existing) > 0) {
+        throw validationError('Invoices with recorded payments cannot be deleted.');
     }
 }
 
@@ -233,6 +279,7 @@ export function normalizeInvoicePayload(body, { isCreate = false, existing = nul
             data.datePaid = new Date().toISOString();
         }
     } else {
+        // Payment ledger fields are owned by POST /payments (or mark-paid sync).
         delete data.paymentMethod;
         delete data.receiptNumber;
         delete data.datePaid;

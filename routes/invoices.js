@@ -18,6 +18,14 @@ import {
     assertInvoiceDeleteAllowed,
 } from '../utils/invoiceValidation.js';
 import {
+    applyInvoicePayment,
+    ensurePaymentLedger,
+    getInvoiceAmountPaid,
+    getInvoiceBalanceDue,
+    syncFullPaymentFromMarkPaid,
+} from '../utils/invoicePayments.js';
+import { receiptFromInvoiceNumber } from '../utils/invoiceNumber.js';
+import {
     sendReceiptEmail,
     sendPaymentReminderEmail,
     getEmailErrorMessage,
@@ -107,7 +115,7 @@ async function getInvoiceStatusCounts(userId) {
         { $match: { userId: uid, status: { $ne: 'draft' } } },
         { $group: { _id: '$status', count: { $sum: 1 } } },
     ]);
-    const statusCounts = { all: 0, pending: 0, paid: 0, overdue: 0, cancelled: 0 };
+    const statusCounts = { all: 0, pending: 0, partial: 0, paid: 0, overdue: 0, cancelled: 0 };
     for (const row of rows) {
         const key = row._id;
         if (key && Object.prototype.hasOwnProperty.call(statusCounts, key)) {
@@ -317,8 +325,51 @@ router.get('/:id', auth, validateObjectId(), asyncHandler(async (req, res) => {
         userId: req.user.userId,
     });
     if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
+
+    const needsBackfill =
+        invoice.status === PAID &&
+        (!(invoice.payments?.length) || invoice.amountPaid == null || Number(invoice.amountPaid) === 0);
+    if (needsBackfill) {
+        ensurePaymentLedger(invoice);
+        await invoice.save();
+    }
+
     res.json(invoice);
 }));
+
+// Record an installment payment (partial or full)
+router.post('/:id/payments', auth, requireEmailVerified, validateObjectId(), async (req, res) => {
+    try {
+        const invoice = await Invoice.findOne({
+            _id: req.params.id,
+            userId: req.user.userId,
+        });
+        if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
+
+        const { becamePaid } = applyInvoicePayment(invoice, req.body);
+
+        if (becamePaid) {
+            const invNum = invoice.invoiceNumber;
+            invoice.receiptNumber =
+                invoice.receiptNumber || receiptFromInvoiceNumber(invNum);
+            attachPublicTokenIfNeeded(invoice, invoice);
+        }
+
+        await invoice.save();
+
+        if (becamePaid) {
+            await dispatchPaidInvoiceEmails(invoice, req.user.userId);
+        }
+
+        res.json(invoice);
+    } catch (err) {
+        if (err.status === 400) {
+            return res.status(400).json({ message: err.message });
+        }
+        console.error('Record payment error:', err);
+        res.status(500).json({ message: err.message || 'Could not record payment' });
+    }
+});
 
 // Update invoice
 router.put('/:id', auth, requireEmailVerified, validateObjectId(), async (req, res) => {
@@ -344,6 +395,26 @@ router.put('/:id', auth, requireEmailVerified, validateObjectId(), async (req, r
         );
 
         attachPublicTokenIfNeeded(payload, existing);
+
+        // Legacy mark-as-paid via PUT: sync payments ledger for the remaining balance.
+        const markingPaid =
+            existing.status !== PAID && payload.status === PAID;
+        if (markingPaid) {
+            ensurePaymentLedger(existing);
+            syncFullPaymentFromMarkPaid(existing, {
+                paymentMethod: payload.paymentMethod,
+                datePaid: payload.datePaid,
+            });
+            payload.amountPaid = existing.amountPaid;
+            payload.payments = existing.payments;
+            payload.paymentMethod = existing.paymentMethod;
+            payload.datePaid = existing.datePaid;
+            payload.status = PAID;
+            payload.receiptNumber =
+                existing.receiptNumber ||
+                payload.receiptNumber ||
+                receiptFromInvoiceNumber(existing.invoiceNumber || payload.invoiceNumber);
+        }
 
         const invoice = await Invoice.findOneAndUpdate(
             { _id: req.params.id, userId: req.user.userId },
@@ -435,8 +506,10 @@ router.post('/:id/send-reminder', auth, requireEmailVerified, validateObjectId()
             userId: req.user.userId,
         });
         if (!invoice) return res.status(404).json({ message: 'Invoice not found' });
-        if (!['pending', 'overdue'].includes(invoice.status)) {
-            return res.status(400).json({ message: 'Reminders can only be sent for pending or overdue invoices.' });
+        if (!['pending', 'partial', 'overdue'].includes(invoice.status)) {
+            return res.status(400).json({
+                message: 'Reminders can only be sent for pending, partial, or overdue invoices.',
+            });
         }
 
         const lastReminder = invoice.lastPaymentReminderAt?.getTime() || 0;
@@ -456,7 +529,7 @@ router.post('/:id/send-reminder', auth, requireEmailVerified, validateObjectId()
             to: ctx.to,
             customerName: ctx.customerName,
             invoiceNumber: invoice.invoiceNumber,
-            amountOutstanding: invoice.total,
+            amountOutstanding: getInvoiceBalanceDue(invoice),
             currency: invoice.currency || 'NGN',
             dueDate: invoice.dueDate,
             daysUntilDue,
@@ -514,7 +587,7 @@ router.post('/:id/send-receipt', auth, requireEmailVerified, validateObjectId(),
             customerName: ctx.customerName,
             invoiceNumber: invoice.invoiceNumber,
             receiptNumber: invoice.receiptNumber,
-            amountPaid: invoice.total,
+            amountPaid: getInvoiceAmountPaid(invoice) || invoice.total,
             currency: invoice.currency || 'NGN',
             paymentDate: invoice.datePaid || new Date(),
             paymentMethod: formatPaymentMethod(invoice.paymentMethod),

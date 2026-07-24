@@ -8,13 +8,15 @@ export function todayDateString(date = new Date()) {
     return `${y}-${m}-${d}`;
 }
 
-/** Mark pending invoices past due as overdue — single bulk update per request. */
+const OVERDUE_ELIGIBLE = ['pending', 'partial'];
+
+/** Mark pending/partial invoices past due as overdue — single bulk update per request. */
 export async function syncOverdueInvoicesForUser(userId) {
     const today = todayDateString();
     await Invoice.updateMany(
         {
             userId,
-            status: 'pending',
+            status: { $in: OVERDUE_ELIGIBLE },
             dueDate: { $exists: true, $nin: [null, ''], $lt: today },
         },
         { $set: { status: 'overdue' } }
@@ -26,7 +28,7 @@ export async function syncAllOverdueInvoices() {
     const today = todayDateString();
     const result = await Invoice.updateMany(
         {
-            status: 'pending',
+            status: { $in: OVERDUE_ELIGIBLE },
             dueDate: { $exists: true, $nin: [null, ''], $lt: today },
         },
         { $set: { status: 'overdue' } }

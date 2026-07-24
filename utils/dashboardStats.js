@@ -6,7 +6,7 @@ import { syncExpiredQuotationsForUser } from './quotationExpire.js';
 import { getDraftCountForUser } from './documentDrafts.js';
 
 const INVOICE_SUMMARY_FIELDS =
-    'invoiceNumber receiptNumber clientId date dueDate status total currency createdAt updatedAt';
+    'invoiceNumber receiptNumber clientId date dueDate status total amountPaid currency createdAt updatedAt';
 const QUOTATION_SUMMARY_FIELDS =
     'quotationNumber clientId date validUntil status total currency createdAt updatedAt convertedInvoiceId';
 
@@ -22,10 +22,36 @@ function mapSummary(doc) {
     };
 }
 
-function sumRevenueForStatus(invoices, status) {
+function roundMoney(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return 0;
+    return Math.round(n * 100) / 100;
+}
+
+function amountPaidOf(inv) {
+    const recorded = roundMoney(inv.amountPaid);
+    if (recorded > 0) return recorded;
+    if (inv.status === 'paid') return roundMoney(inv.total);
+    return 0;
+}
+
+function balanceDueOf(inv) {
+    return Math.max(0, roundMoney(inv.total) - amountPaidOf(inv));
+}
+
+/** Collected cash across all invoices (uses amountPaid when present). */
+function sumCollectedRevenue(invoices) {
     return invoices.reduce((sum, inv) => {
-        if (inv.status !== status) return sum;
-        return sum + (Number(inv.total) || 0);
+        if (inv.status === 'cancelled' || inv.status === 'draft') return sum;
+        return sum + amountPaidOf(inv);
+    }, 0);
+}
+
+/** Outstanding balances for unpaid / partial / overdue invoices. */
+function sumOutstandingRevenue(invoices) {
+    return invoices.reduce((sum, inv) => {
+        if (!['pending', 'partial', 'overdue'].includes(inv.status)) return sum;
+        return sum + balanceDueOf(inv);
     }, 0);
 }
 
@@ -67,7 +93,7 @@ export async function getDashboardForUser(userId) {
         totalClients,
         totalQuotations,
     ] = await Promise.all([
-        Invoice.find(nonDraftFilter).select('status total').lean(),
+        Invoice.find(nonDraftFilter).select('status total amountPaid').lean(),
         Invoice.find(nonDraftFilter)
             .select(INVOICE_SUMMARY_FIELDS)
             .sort({ createdAt: -1 })
@@ -115,8 +141,8 @@ export async function getDashboardForUser(userId) {
             totalInvoices: statsSource.length,
             totalQuotations,
             totalClients,
-            paidRevenue: sumRevenueForStatus(statsSource, 'paid'),
-            pendingRevenue: sumRevenueForStatus(statsSource, 'pending'),
+            paidRevenue: sumCollectedRevenue(statsSource),
+            pendingRevenue: sumOutstandingRevenue(statsSource),
             draftCount,
         },
         recentDocuments,

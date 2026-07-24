@@ -86,6 +86,7 @@ function sanitizePublicInvoice(invoice) {
         subtotal: invoice.subtotal ?? 0,
         tax: invoice.tax ?? 0,
         total: invoice.total ?? 0,
+        amountPaid: invoice.amountPaid ?? 0,
     };
 }
 

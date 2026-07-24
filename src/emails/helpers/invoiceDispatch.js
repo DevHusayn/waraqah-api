@@ -141,7 +141,7 @@ export async function dispatchPaidInvoiceEmails(invoice, userId) {
             to: ctx.to,
             customerName: ctx.customerName,
             invoiceNumber: invoice.invoiceNumber,
-            amountPaid: invoice.total,
+            amountPaid: Number(invoice.amountPaid) > 0 ? Number(invoice.amountPaid) : invoice.total,
             currency: invoice.currency || 'NGN',
             paymentDate: invoice.datePaid || new Date(),
             paymentMethod: formatPaymentMethod(invoice.paymentMethod),
