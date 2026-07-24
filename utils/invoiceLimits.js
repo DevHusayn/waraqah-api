@@ -1,4 +1,5 @@
 import Invoice from '../models/Invoice.js';
+import Quotation from '../models/Quotation.js';
 import BusinessInfo from '../models/CompanyInfo.js';
 import MonthlyInvoiceUsage from '../models/MonthlyInvoiceUsage.js';
 import { isPremiumActive } from './businessInfoHelpers.js';
@@ -13,6 +14,7 @@ export function getCurrentMonthRange() {
     return { start, end, periodKey };
 }
 
+/** Non-draft invoices that were not created via quotation conversion. */
 export async function countInvoicesInCurrentMonth(userId, resetAfter = null) {
     const { start, end } = getCurrentMonthRange();
     const countStart =
@@ -21,7 +23,28 @@ export async function countInvoicesInCurrentMonth(userId, resetAfter = null) {
         userId,
         createdAt: { $gte: countStart, $lt: end },
         status: { $ne: 'draft' },
+        $or: [{ sourceQuotationId: null }, { sourceQuotationId: { $exists: false } }],
     });
+}
+
+/** Non-draft quotations count toward the same free-plan monthly limit. */
+export async function countQuotationsInCurrentMonth(userId, resetAfter = null) {
+    const { start, end } = getCurrentMonthRange();
+    const countStart =
+        resetAfter instanceof Date && resetAfter > start ? resetAfter : start;
+    return Quotation.countDocuments({
+        userId,
+        createdAt: { $gte: countStart, $lt: end },
+        status: { $ne: 'draft' },
+    });
+}
+
+export async function countDocumentsInCurrentMonth(userId, resetAfter = null) {
+    const [invoices, quotations] = await Promise.all([
+        countInvoicesInCurrentMonth(userId, resetAfter),
+        countQuotationsInCurrentMonth(userId, resetAfter),
+    ]);
+    return invoices + quotations;
 }
 
 export async function getInvoiceUsageForUser(userId) {
@@ -41,13 +64,13 @@ export async function getInvoiceUsageForUser(userId) {
     }
 
     const usageDoc = await MonthlyInvoiceUsage.findOne({ userId, periodKey });
-    const currentInvoiceCount = await countInvoicesInCurrentMonth(
+    const currentDocumentCount = await countDocumentsInCurrentMonth(
         userId,
         usageDoc?.adminResetAt || null
     );
-    // Seed from current invoices so users do not get extra slots after deployment.
-    // Once the ledger is ahead, deleted invoices still count for the month.
-    const used = Math.max(usageDoc?.count || 0, currentInvoiceCount);
+    // Seed from current documents so users do not get extra slots after deployment.
+    // Once the ledger is ahead, deleted documents still count for the month.
+    const used = Math.max(usageDoc?.count || 0, currentDocumentCount);
     const limit = FREE_MONTHLY_INVOICE_LIMIT;
     const remaining = Math.max(0, limit - used);
 
@@ -88,15 +111,15 @@ function buildFreeUsage({ start, end, used }) {
     };
 }
 
-function countInvoicesSinceReset(invoices, userId, resetAfter, rangeStart, rangeEnd) {
+function countDocsSinceReset(docs, userId, resetAfter, rangeStart, rangeEnd) {
     const countStart =
         resetAfter instanceof Date && resetAfter > rangeStart ? resetAfter : rangeStart;
     const id = userId.toString();
-    return invoices.filter(
-        (inv) =>
-            inv.userId.toString() === id &&
-            inv.createdAt >= countStart &&
-            inv.createdAt < rangeEnd
+    return docs.filter(
+        (doc) =>
+            doc.userId.toString() === id &&
+            doc.createdAt >= countStart &&
+            doc.createdAt < rangeEnd
     ).length;
 }
 
@@ -106,10 +129,16 @@ export async function getInvoiceUsageMapForUsers(userIds) {
     if (!userIds.length) return usageMap;
 
     const { start, end, periodKey } = getCurrentMonthRange();
-    const [businessInfos, usageDocs, monthInvoices] = await Promise.all([
+    const [businessInfos, usageDocs, monthInvoices, monthQuotations] = await Promise.all([
         BusinessInfo.find({ userId: { $in: userIds } }),
         MonthlyInvoiceUsage.find({ userId: { $in: userIds }, periodKey }),
         Invoice.find({
+            userId: { $in: userIds },
+            createdAt: { $gte: start, $lt: end },
+            status: { $ne: 'draft' },
+            $or: [{ sourceQuotationId: null }, { sourceQuotationId: { $exists: false } }],
+        }).select('userId createdAt'),
+        Quotation.find({
             userId: { $in: userIds },
             createdAt: { $gte: start, $lt: end },
             status: { $ne: 'draft' },
@@ -133,14 +162,22 @@ export async function getInvoiceUsageMapForUsers(userIds) {
         }
 
         const usageDoc = usageByUser.get(id);
-        const currentInvoiceCount = countInvoicesSinceReset(
-            monthInvoices,
-            userId,
-            usageDoc?.adminResetAt || null,
-            start,
-            end
-        );
-        const used = Math.max(usageDoc?.count || 0, currentInvoiceCount);
+        const currentDocumentCount =
+            countDocsSinceReset(
+                monthInvoices,
+                userId,
+                usageDoc?.adminResetAt || null,
+                start,
+                end
+            ) +
+            countDocsSinceReset(
+                monthQuotations,
+                userId,
+                usageDoc?.adminResetAt || null,
+                start,
+                end
+            );
+        const used = Math.max(usageDoc?.count || 0, currentDocumentCount);
         usageMap.set(id, buildFreeUsage({ start, end, used }));
     }
 
@@ -153,7 +190,7 @@ export async function reserveInvoiceCreation(userId) {
 
     if (!usage.canCreate) {
         const err = new Error(
-            `Free plan limit reached: ${usage.limit} invoices per month. Upgrade to Premium for unlimited invoices.`
+            `Free plan limit reached: ${usage.limit} invoices & quotations per month. Upgrade to Premium for unlimited documents.`
         );
         err.code = 'INVOICE_LIMIT_REACHED';
         err.status = 403;

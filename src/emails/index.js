@@ -13,6 +13,8 @@ export {
     sendPasswordResetEmail,
     sendEmailVerificationEmail,
     sendInvoiceEmail,
+    sendQuotationEmail,
+    sendQuotationEmailedOwnerNotification,
     sendReceiptEmail,
     sendPaymentConfirmationEmail,
     sendPaymentReminderEmail,
@@ -23,6 +25,7 @@ export {
     sendInvoiceCancelledClientEmail,
     sendInvoiceCancelledOwnerNotification,
     sendAccountSuspendedEmail,
+    sendNewUserAdminNotification,
     sendPremiumUpgradeSuccessEmail,
     sendPremiumPaymentFailedEmail,
     sendPremiumSubscriptionCancelledEmail,
@@ -50,3 +53,8 @@ export {
     dispatchOverdueInvoiceEmails,
     dispatchCancelledInvoiceEmails,
 } from './helpers/invoiceDispatch.js';
+
+export {
+    dispatchQuotationEmailToClient,
+    tryAutoEmailQuotation,
+} from './helpers/quotationDispatch.js';

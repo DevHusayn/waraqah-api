@@ -1,6 +1,7 @@
 import express from 'express';
 import { sendDuePaymentReminders } from '../paymentReminderAutomation.js';
 import { syncAllOverdueInvoices } from '../utils/invoiceOverdue.js';
+import { syncAllExpiredQuotations } from '../utils/quotationExpire.js';
 import asyncHandler from '../middleware/asyncHandler.js';
 
 const router = express.Router();
@@ -29,6 +30,12 @@ router.get('/payment-reminders', verifyCronSecret, asyncHandler(async (req, res)
 router.get('/overdue-sync', verifyCronSecret, asyncHandler(async (req, res) => {
     const { modifiedCount } = await syncAllOverdueInvoices();
     res.json({ ok: true, message: 'Overdue invoices synced.', modifiedCount });
+}));
+
+/** Vercel Cron — mark sent/accepted quotations past validUntil as expired. */
+router.get('/expire-quotations', verifyCronSecret, asyncHandler(async (req, res) => {
+    const { modifiedCount } = await syncAllExpiredQuotations();
+    res.json({ ok: true, message: 'Expired quotations synced.', modifiedCount });
 }));
 
 export default router;

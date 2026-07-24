@@ -6,6 +6,8 @@ export { sendWelcomeEmail } from './welcomeEmail.js';
 export { sendPasswordResetEmail } from './passwordResetEmail.js';
 export { sendEmailVerificationEmail } from './emailVerificationEmail.js';
 export { sendInvoiceEmail } from './invoiceEmail.js';
+export { sendQuotationEmail } from './quotationEmail.js';
+export { sendQuotationEmailedOwnerNotification } from './quotationEmailedOwnerNotification.js';
 export { sendReceiptEmail } from './receiptEmail.js';
 export { sendPaymentConfirmationEmail } from './paymentConfirmationEmail.js';
 export { sendPaymentReminderEmail } from './paymentReminderEmail.js';
@@ -16,6 +18,7 @@ export { sendInvoiceReceiptSentOwnerNotification } from './invoiceReceiptSentOwn
 export { sendInvoiceCancelledClientEmail } from './invoiceCancelledClientEmail.js';
 export { sendInvoiceCancelledOwnerNotification } from './invoiceCancelledOwnerNotification.js';
 export { sendAccountSuspendedEmail } from './accountSuspendedEmail.js';
+export { sendNewUserAdminNotification } from './newUserAdminNotification.js';
 export { sendPremiumUpgradeSuccessEmail } from './premiumUpgradeSuccessEmail.js';
 export { sendPremiumPaymentFailedEmail } from './premiumPaymentFailedEmail.js';
 export { sendPremiumSubscriptionCancelledEmail } from './premiumSubscriptionCancelledEmail.js';

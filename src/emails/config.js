@@ -41,6 +41,11 @@ export function getSupportEmail() {
     return process.env.EMAIL_SUPPORT?.trim() || 'support@mywaraqah.com';
 }
 
+/** Inbox for platform ops alerts (e.g. new signups). Falls back to support email. */
+export function getAdminNotifyEmail() {
+    return process.env.ADMIN_EMAIL?.trim() || getSupportEmail();
+}
+
 export function getWebsiteUrl() {
     const url = process.env.EMAIL_WEBSITE_URL?.trim()
         || process.env.FRONTEND_URL?.trim()

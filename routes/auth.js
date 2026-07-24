@@ -20,7 +20,7 @@ import {
     resetFreeInvoiceUsageForUser,
 } from '../utils/invoiceLimits.js';
 import { sendPasswordResetEmail, getEmailErrorMessage, PASSWORD_RESET_EXPIRY_MINUTES, sendEmailVerificationEmail } from '../src/emails/index.js';
-import { sendRegistrationEmails } from '../src/emails/helpers/accountEmails.js';
+import { notifyAdminNewUser, sendRegistrationEmails } from '../src/emails/helpers/accountEmails.js';
 import { notifyAccountSuspended } from '../src/emails/helpers/premiumNotifications.js';
 import { EMAIL_VERIFICATION_EXPIRY_HOURS } from '../src/emails/config.js';
 import { isStrongPassword, PASSWORD_REQUIREMENTS_MESSAGE } from '../utils/passwordValidation.js';
@@ -294,7 +294,11 @@ router.post('/register', registerLimiter, async (req, res) => {
             ...sanitizedBusinessInfo,
         });
 
-        await sendRegistrationEmails({ user, verificationToken });
+        await sendRegistrationEmails({
+            user,
+            verificationToken,
+            businessName: sanitizedBusinessInfo?.name,
+        });
 
         res.status(201).json({
             message: 'Account created. Check your email to verify your address before signing in.',
@@ -611,6 +615,12 @@ router.post('/google', loginLimiter, async (req, res) => {
 
         const profile = await verifyGoogleCredential(credential);
         const { user, isNewUser } = await findOrCreateOAuthUser(profile);
+        if (isNewUser) {
+            await notifyAdminNewUser({
+                user,
+                signupMethod: 'google',
+            });
+        }
         const session = await buildOAuthLoginResponse(res, user, { isNewUser });
         res.json(session);
     } catch (err) {

@@ -12,6 +12,9 @@ import {
 } from '@react-email/components';
 import { BRAND, getCopyrightYear, getSupportEmail, getWebsiteUrl } from '../config.js';
 
+const BODONI_MODA_STYLESHEET =
+    'https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,600&display=swap';
+
 /**
  * Shared layout for all Waraqah transactional emails.
  *
@@ -27,7 +30,14 @@ export default function EmailLayout({ preview, children }) {
     return React.createElement(
         Html,
         null,
-        React.createElement(Head, null),
+        React.createElement(
+            Head,
+            null,
+            React.createElement('link', {
+                rel: 'stylesheet',
+                href: BODONI_MODA_STYLESHEET,
+            }),
+        ),
         preview ? React.createElement(Preview, null, preview) : null,
         React.createElement(
             Body,
@@ -38,7 +48,11 @@ export default function EmailLayout({ preview, children }) {
                 React.createElement(
                     Section,
                     { style: styles.header },
-                    React.createElement(Text, { style: styles.logoText }, BRAND.name),
+                    React.createElement(
+                        Link,
+                        { href: websiteUrl, style: styles.logoLink },
+                        React.createElement(Text, { style: styles.logoText }, BRAND.name),
+                    ),
                 ),
                 React.createElement(Section, { style: styles.content }, children),
                 React.createElement(Hr, { style: styles.divider }),
@@ -164,11 +178,19 @@ const styles = {
         padding: '24px 32px',
         textAlign: 'center',
     },
+    logoLink: {
+        display: 'inline-block',
+        textDecoration: 'none',
+    },
+    /** Matches in-app WaraqahWordmark: Bodoni Moda, semibold, brand-hover, no italic. */
     logoText: {
         margin: 0,
+        fontFamily: '"Bodoni Moda", Georgia, serif',
         fontSize: '22px',
-        fontWeight: 700,
-        fontStyle: 'italic',
+        fontWeight: 600,
+        fontStyle: 'normal',
+        letterSpacing: '-0.025em',
+        lineHeight: 1,
         color: BRAND.accentDark,
     },
     content: {

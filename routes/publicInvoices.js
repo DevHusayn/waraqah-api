@@ -1,5 +1,6 @@
 import express from 'express';
 import Invoice from '../models/Invoice.js';
+import Quotation from '../models/Quotation.js';
 import Client from '../models/Client.js';
 import BusinessInfo from '../models/CompanyInfo.js';
 import asyncHandler from '../middleware/asyncHandler.js';
@@ -9,6 +10,7 @@ import { parseDataUrlImage } from '../src/emails/helpers/clientEmailBranding.js'
 const router = express.Router();
 
 const HIDDEN_STATUSES = new Set(['draft', 'cancelled']);
+const HIDDEN_QUOTATION_STATUSES = new Set(['draft']);
 
 function resolveCompanyLogo(info) {
     return (info.companyLogoUrl || info.businessLogo || '').trim();
@@ -87,6 +89,57 @@ function sanitizePublicInvoice(invoice) {
     };
 }
 
+function sanitizePublicQuotation(quotation) {
+    return {
+        quotationNumber: quotation.quotationNumber,
+        status: quotation.status,
+        date: quotation.date,
+        validUntil: quotation.validUntil,
+        items: (quotation.items || []).map((item) => ({
+            description: item.description,
+            quantity: item.quantity,
+            rate: item.rate,
+            unit: item.unit || 'Qty',
+        })),
+        notes: quotation.notes || '',
+        terms: quotation.terms || '',
+        currency: quotation.currency || 'NGN',
+        taxRate: quotation.taxRate ?? 0,
+        discountType: quotation.discountType || 'fixed',
+        discountValue: quotation.discountValue ?? 0,
+        discount: quotation.discount ?? 0,
+        subtotal: quotation.subtotal ?? 0,
+        tax: quotation.tax ?? 0,
+        total: quotation.total ?? 0,
+        documentType: 'quotation',
+    };
+}
+
+async function servePublicLogo(res, userId) {
+    const businessInfo = await BusinessInfo.findOne({ userId });
+    if (!businessInfo || !isPremiumActive(businessInfo)) {
+        return res.status(404).json({ message: 'Logo not found.' });
+    }
+
+    const rawLogo = resolveCompanyLogo(businessInfo);
+    if (!rawLogo) {
+        return res.status(404).json({ message: 'Logo not found.' });
+    }
+
+    if (rawLogo.startsWith('http://') || rawLogo.startsWith('https://')) {
+        return res.redirect(302, rawLogo);
+    }
+
+    const parsed = parseDataUrlImage(rawLogo);
+    if (!parsed) {
+        return res.status(404).json({ message: 'Logo not found.' });
+    }
+
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.type(parsed.mime);
+    return res.send(parsed.buffer);
+}
+
 /** Public invoice view — no authentication required. */
 router.get('/invoices/:token', asyncHandler(async (req, res) => {
     const token = String(req.params.token || '').trim();
@@ -125,28 +178,47 @@ router.get('/invoices/:token/logo', asyncHandler(async (req, res) => {
         return res.status(404).json({ message: 'Logo not found.' });
     }
 
-    const businessInfo = await BusinessInfo.findOne({ userId: invoice.userId });
-    if (!businessInfo || !isPremiumActive(businessInfo)) {
+    return servePublicLogo(res, invoice.userId);
+}));
+
+/** Public quotation view — no authentication required. */
+router.get('/quotations/:token', asyncHandler(async (req, res) => {
+    const token = String(req.params.token || '').trim();
+    if (!token) {
+        return res.status(400).json({ message: 'Invalid quotation link.' });
+    }
+
+    const quotation = await Quotation.findOne({ publicToken: token });
+    if (!quotation || HIDDEN_QUOTATION_STATUSES.has(quotation.status)) {
+        return res.status(404).json({ message: 'This quotation link is invalid or no longer available.' });
+    }
+
+    const [client, businessInfo] = await Promise.all([
+        quotation.clientId
+            ? Client.findOne({ _id: quotation.clientId, userId: quotation.userId })
+            : null,
+        BusinessInfo.findOne({ userId: quotation.userId }),
+    ]);
+
+    res.json({
+        quotation: sanitizePublicQuotation(quotation),
+        client: sanitizePublicClient(client),
+        business: sanitizePublicBusiness(businessInfo),
+    });
+}));
+
+router.get('/quotations/:token/logo', asyncHandler(async (req, res) => {
+    const token = String(req.params.token || '').trim();
+    if (!token) {
+        return res.status(400).json({ message: 'Invalid quotation link.' });
+    }
+
+    const quotation = await Quotation.findOne({ publicToken: token });
+    if (!quotation || HIDDEN_QUOTATION_STATUSES.has(quotation.status)) {
         return res.status(404).json({ message: 'Logo not found.' });
     }
 
-    const rawLogo = resolveCompanyLogo(businessInfo);
-    if (!rawLogo) {
-        return res.status(404).json({ message: 'Logo not found.' });
-    }
-
-    if (rawLogo.startsWith('http://') || rawLogo.startsWith('https://')) {
-        return res.redirect(302, rawLogo);
-    }
-
-    const parsed = parseDataUrlImage(rawLogo);
-    if (!parsed) {
-        return res.status(404).json({ message: 'Logo not found.' });
-    }
-
-    res.set('Cache-Control', 'public, max-age=86400');
-    res.type(parsed.mime);
-    return res.send(parsed.buffer);
+    return servePublicLogo(res, quotation.userId);
 }));
 
 export default router;

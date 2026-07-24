@@ -46,6 +46,12 @@ const invoiceSchema = new mongoose.Schema({
     lastPaymentReminderAt: { type: Date, default: null },
     /** Set when the invoice notification is emailed to the client. */
     clientInvoiceEmailedAt: { type: Date, default: null },
+    /** Set when this invoice was created by converting a quotation (skips quota). */
+    sourceQuotationId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Quotation',
+        default: null,
+    },
 }, { timestamps: true });
 
 invoiceSchema.index({ userId: 1, createdAt: -1 });

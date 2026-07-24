@@ -48,14 +48,30 @@ function resolveBusinessLogo(businessInfo) {
 /**
  * Data URLs break HTML email (line-length limits, client blocking). Host via public API instead.
  */
-export function resolveEmailLogoUrl(rawLogo, publicToken) {
+function isPubliclyReachableUrl(url) {
+    try {
+        const parsed = new URL(url);
+        if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
+        const host = parsed.hostname.toLowerCase();
+        if (host === 'localhost' || host === '127.0.0.1' || host === '::1') return false;
+        if (host.endsWith('.local')) return false;
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+export function resolveEmailLogoUrl(rawLogo, publicToken, documentPath = 'invoices') {
     const trimmed = String(rawLogo || '').trim();
     if (!trimmed) return null;
     if (trimmed.startsWith('https://') || trimmed.startsWith('http://')) {
-        return trimmed;
+        // Skip private/local URLs — email clients and Resend cannot fetch them.
+        return isPubliclyReachableUrl(trimmed) ? trimmed : null;
     }
     if (trimmed.startsWith('data:') && publicToken) {
-        return `${getApiBaseUrl()}/public/invoices/${encodeURIComponent(publicToken)}/logo`;
+        const path = documentPath === 'quotations' ? 'quotations' : 'invoices';
+        const hosted = `${getApiBaseUrl()}/public/${path}/${encodeURIComponent(publicToken)}/logo`;
+        return isPubliclyReachableUrl(hosted) ? hosted : null;
     }
     return null;
 }
@@ -64,12 +80,12 @@ export function resolveEmailLogoUrl(rawLogo, publicToken) {
  * Build branding tokens for client-facing invoice emails.
  */
 export function buildClientEmailBranding(businessInfo, businessName, options = {}) {
-    const { publicToken } = options;
+    const { publicToken, documentPath = 'invoices' } = options;
     const name = businessName?.trim() || businessInfo?.name?.trim() || 'Your business';
     const brandColor = sanitizeHexColor(businessInfo?.brandColor, BRAND.accent);
     const premium = isPremiumActive(businessInfo);
     const rawLogo = premium ? resolveBusinessLogo(businessInfo) : '';
-    const logoUrl = resolveEmailLogoUrl(rawLogo, publicToken);
+    const logoUrl = resolveEmailLogoUrl(rawLogo, publicToken, documentPath);
 
     return {
         businessName: name,

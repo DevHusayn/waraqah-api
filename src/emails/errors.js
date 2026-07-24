@@ -36,6 +36,17 @@ export function getEmailErrorMessage(err) {
         return 'We could not send the email right now. Please contact support.';
     }
 
+    if (
+        message.includes('could not be resolved') ||
+        message.includes('unable to fetch data') ||
+        name === 'application_error'
+    ) {
+        if (process.env.NODE_ENV !== 'production') {
+            return 'Could not reach the email provider (network/DNS). Check your internet connection and try again.';
+        }
+        return 'We could not send the email. Please try again in a few minutes.';
+    }
+
     return 'We could not send the email. Please try again in a few minutes.';
 }
 
