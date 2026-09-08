@@ -79,6 +79,8 @@ import {
     adminUsersToCsv,
     ADMIN_USER_EXPORT_MAX,
 } from '../utils/adminUserExport.js';
+import { adminDisplayName } from '../utils/adminDisplayName.js';
+import { isProtectedAdminUser } from '../utils/protectedAdmin.js';
 import {
     logUserLogin,
     logUserSuspended,
@@ -160,6 +162,9 @@ router.patch('/admin/users/:id/status', auth, requireAdmin, validateObjectId(), 
         if (req.user.userId === req.params.id) return res.status(400).json({ message: 'You cannot change your own status.' });
         const user = await User.findById(req.params.id);
         if (!user) return res.status(404).json({ message: 'User not found' });
+        if (isProtectedAdminUser(user) && user.status === 'active') {
+            return res.status(403).json({ message: 'This account is protected and cannot be suspended.' });
+        }
         const wasActive = user.status === 'active';
         user.status = wasActive ? 'suspended' : 'active';
         await user.save();
@@ -182,6 +187,9 @@ router.patch('/admin/users/:id/admin', auth, requireAdmin, validateObjectId(), a
         if (req.user.userId === req.params.id) return res.status(400).json({ message: 'You cannot change your own admin status.' });
         const user = await User.findById(req.params.id);
         if (!user) return res.status(404).json({ message: 'User not found' });
+        if (isProtectedAdminUser(user)) {
+            return res.status(403).json({ message: 'This account is protected and cannot have admin access changed.' });
+        }
         user.isAdmin = !user.isAdmin;
         await user.save();
         res.json({ message: 'User admin status updated', isAdmin: user.isAdmin });
@@ -194,6 +202,11 @@ router.patch('/admin/users/:id/admin', auth, requireAdmin, validateObjectId(), a
 router.delete('/admin/users/:id', auth, requireAdmin, validateObjectId(), async (req, res) => {
     try {
         if (req.user.userId === req.params.id) return res.status(400).json({ message: 'You cannot delete yourself.' });
+        const existing = await User.findById(req.params.id);
+        if (!existing) return res.status(404).json({ message: 'User not found' });
+        if (isProtectedAdminUser(existing)) {
+            return res.status(403).json({ message: 'This account is protected and cannot be deleted.' });
+        }
         const user = await User.findByIdAndDelete(req.params.id);
         if (!user) return res.status(404).json({ message: 'User not found' });
         // Optionally, delete related business info, invoices, clients
@@ -812,8 +825,10 @@ router.get('/admin/users/:id', auth, requireAdmin, validateObjectId(), async (re
                 id: String(user._id),
                 email: user.email,
                 name: user.name || '',
+                displayName: adminDisplayName(user, businessInfo),
                 status: user.status,
                 isAdmin: user.isAdmin,
+                isProtected: isProtectedAdminUser(user),
                 authProvider: user.authProvider || 'local',
                 emailVerified: user.emailVerified === undefined ? true : Boolean(user.emailVerified),
                 createdAt: user.createdAt,

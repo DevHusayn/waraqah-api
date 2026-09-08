@@ -1,10 +1,37 @@
 import BusinessInfo from '../models/CompanyInfo.js';
 import Invoice from '../models/Invoice.js';
+import Quotation from '../models/Quotation.js';
+import Client from '../models/Client.js';
+import Product from '../models/Product.js';
 import { escapeRegex } from './pagination.js';
 
 const VALID_PLANS = new Set(['free', 'premium']);
-const VALID_STATUSES = new Set(['active', 'suspended']);
-const VALID_ACTIVITY = new Set(['has_invoices', 'no_invoices']);
+const VALID_STATUSES = new Set(['active', 'suspended', 'admin']);
+
+const ACTIVITY_SLUGS = {
+    has_workspace: 'with-workspace',
+    empty_workspace: 'empty-workspace',
+    has_invoices: 'with-invoices',
+    no_invoices: 'no-invoices',
+    has_receipts: 'with-receipts',
+    no_receipts: 'no-receipts',
+    has_quotations: 'with-quotations',
+    no_quotations: 'no-quotations',
+    has_clients: 'with-clients',
+    no_clients: 'no-clients',
+    has_products: 'with-products',
+    no_products: 'no-products',
+    active_7d: 'active-7d',
+    inactive_30d: 'inactive-30d',
+    never_signed_in: 'never-signed-in',
+};
+
+const VALID_ACTIVITY = new Set(Object.keys(ACTIVITY_SLUGS));
+
+export function activityFilterSlug(activity) {
+    if (!activity || activity === 'all') return null;
+    return ACTIVITY_SLUGS[activity] || String(activity).replace(/_/g, '-');
+}
 
 export function parseAdminUserFilters(query = {}) {
     const search = String(query.search || '').trim();
@@ -14,11 +41,134 @@ export function parseAdminUserFilters(query = {}) {
     return { search, plan, status, activity };
 }
 
+async function distinctUserIds(Model, query = {}) {
+    return (await Model.distinct('userId', query)).filter(Boolean);
+}
+
+function mergeIds(...lists) {
+    const seen = new Set();
+    const out = [];
+    for (const list of lists) {
+        for (const id of list) {
+            const key = String(id);
+            if (!seen.has(key)) {
+                seen.add(key);
+                out.push(id);
+            }
+        }
+    }
+    return out;
+}
+
+function matchUsersIn(ids) {
+    return { _id: { $in: ids.length ? ids : [null] } };
+}
+
+function matchUsersNotIn(ids) {
+    if (!ids.length) return null;
+    return { _id: { $nin: ids } };
+}
+
+function daysAgo(days) {
+    return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+}
+
+async function workspaceUserIds() {
+    const [invoices, quotations, clients, products] = await Promise.all([
+        distinctUserIds(Invoice),
+        distinctUserIds(Quotation),
+        distinctUserIds(Client),
+        distinctUserIds(Product),
+    ]);
+    return mergeIds(invoices, quotations, clients, products);
+}
+
+async function invoiceUserIds() {
+    return distinctUserIds(Invoice, {
+        $or: [
+            { documentType: 'invoice' },
+            { documentType: { $exists: false } },
+            { documentType: null },
+        ],
+    });
+}
+
+async function receiptUserIds() {
+    return distinctUserIds(Invoice, { documentType: 'receipt' });
+}
+
+async function buildActivityCondition(activity) {
+    switch (activity) {
+        case 'has_workspace':
+            return matchUsersIn(await workspaceUserIds());
+        case 'empty_workspace':
+            return matchUsersNotIn(await workspaceUserIds());
+        case 'has_invoices':
+            return matchUsersIn(await invoiceUserIds());
+        case 'no_invoices':
+            return matchUsersNotIn(await invoiceUserIds());
+        case 'has_receipts':
+            return matchUsersIn(await receiptUserIds());
+        case 'no_receipts':
+            return matchUsersNotIn(await receiptUserIds());
+        case 'has_quotations':
+            return matchUsersIn(await distinctUserIds(Quotation));
+        case 'no_quotations':
+            return matchUsersNotIn(await distinctUserIds(Quotation));
+        case 'has_clients':
+            return matchUsersIn(await distinctUserIds(Client));
+        case 'no_clients':
+            return matchUsersNotIn(await distinctUserIds(Client));
+        case 'has_products':
+            return matchUsersIn(await distinctUserIds(Product));
+        case 'no_products':
+            return matchUsersNotIn(await distinctUserIds(Product));
+        case 'active_7d': {
+            const since = daysAgo(7);
+            return {
+                $or: [
+                    { lastActiveAt: { $gte: since } },
+                    { lastLogin: { $gte: since } },
+                ],
+            };
+        }
+        case 'inactive_30d': {
+            const cutoff = daysAgo(30);
+            return {
+                $and: [
+                    {
+                        $or: [
+                            { lastActiveAt: { $exists: false } },
+                            { lastActiveAt: null },
+                            { lastActiveAt: { $lt: cutoff } },
+                        ],
+                    },
+                    {
+                        $or: [
+                            { lastLogin: { $exists: false } },
+                            { lastLogin: null },
+                            { lastLogin: { $lt: cutoff } },
+                        ],
+                    },
+                ],
+            };
+        }
+        case 'never_signed_in':
+            return {
+                $or: [{ lastLogin: { $exists: false } }, { lastLogin: null }],
+            };
+        default:
+            return null;
+    }
+}
+
 /** Build a MongoDB filter for admin user list/export (AND logic across filters). */
 export async function buildAdminUserFilter({ search, plan, status, activity }) {
     const conditions = [];
 
-    if (status !== 'all') {
+    if (status === 'admin') {
+        conditions.push({ isAdmin: true });
+    } else if (status !== 'all') {
         conditions.push({ status });
     }
 
@@ -42,13 +192,10 @@ export async function buildAdminUserFilter({ search, plan, status, activity }) {
         }
     }
 
-    if (activity === 'has_invoices') {
-        const withInvoices = await Invoice.distinct('userId');
-        conditions.push({ _id: { $in: withInvoices.length ? withInvoices : [null] } });
-    } else if (activity === 'no_invoices') {
-        const withInvoices = await Invoice.distinct('userId');
-        if (withInvoices.length) {
-            conditions.push({ _id: { $nin: withInvoices } });
+    if (activity && activity !== 'all') {
+        const activityCondition = await buildActivityCondition(activity);
+        if (activityCondition) {
+            conditions.push(activityCondition);
         }
     }
 
@@ -62,7 +209,8 @@ export function buildAdminUserFilterSlug({ plan, status, activity, search }) {
     const parts = [];
     if (plan !== 'all') parts.push(plan);
     if (status !== 'all') parts.push(status);
-    if (activity !== 'all') parts.push(activity === 'has_invoices' ? 'with-invoices' : 'no-invoices');
+    const activitySlug = activityFilterSlug(activity);
+    if (activitySlug) parts.push(activitySlug);
     if (search) parts.push('search');
     return parts.length ? parts.join('-') : 'all';
 }

@@ -2,6 +2,8 @@ import BusinessInfo from '../models/CompanyInfo.js';
 import Invoice from '../models/Invoice.js';
 import Client from '../models/Client.js';
 import { getInvoiceUsageMapForUsers } from './invoiceLimits.js';
+import { adminDisplayName } from './adminDisplayName.js';
+import { isProtectedAdminUser } from './protectedAdmin.js';
 
 export async function enrichAdminUsers(users) {
     if (!users.length) return [];
@@ -31,6 +33,8 @@ export async function enrichAdminUsers(users) {
         const invoiceUsage = invoiceUsageByUser.get(doc._id.toString());
         return {
             ...doc,
+            displayName: adminDisplayName(doc, businessInfo),
+            isProtected: isProtectedAdminUser(doc),
             businessInfo,
             invoiceCount,
             clientCount,
@@ -88,7 +92,7 @@ export function adminUsersToCsv(users) {
         const phone = business.phone || '';
         const quota = formatQuota(user.invoiceUsage);
         return [
-            escapeCsvField(user.name || ''),
+            escapeCsvField(user.displayName || user.name || business.name || ''),
             escapeCsvField(user.email || ''),
             escapeCsvField(business.name || ''),
             phone ? excelTextCsvField(phone) : escapeCsvField(''),
