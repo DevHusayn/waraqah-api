@@ -4,6 +4,7 @@ import {
     formatFromDisplayName,
     parseAdminMessageInput,
     resolveAdminMessageAction,
+    resolveAdminMessageGreeting,
     resolveAdminMessageSender,
     sanitizeAdminMessageBody,
     splitBodyParagraphs,
@@ -33,6 +34,18 @@ test('resolveAdminMessageSender uses verified From for custom reply-to', () => {
 test('formatFromDisplayName builds Haybah from Waraqah', () => {
     assert.equal(formatFromDisplayName('Haybah'), 'Haybah from Waraqah');
     assert.equal(formatFromDisplayName('Haybah from Waraqah'), 'Haybah from Waraqah');
+});
+
+test('resolveAdminMessageGreeting prefers business name over account name', () => {
+    assert.equal(
+        resolveAdminMessageGreeting({ userName: 'John Doe', businessName: 'Manal Technologies' }),
+        'Manal Technologies'
+    );
+    assert.equal(
+        resolveAdminMessageGreeting({ userName: 'John Doe', businessName: '  ' }),
+        'John Doe'
+    );
+    assert.equal(resolveAdminMessageGreeting({}), 'there');
 });
 
 test('resolveAdminMessageSender uses a personal from name', () => {
@@ -111,6 +124,8 @@ test('renderAdminMessageEmail wraps the body in the Waraqah layout', async () =>
     });
     assert.doesNotMatch(html, /Account follow-up/);
     assert.match(html, /Hi Ada/);
+    assert.match(html, /font-weight:700/);
+    assert.doesNotMatch(html, /The Waraqah Team/);
     assert.match(html, /Please confirm your billing details/);
     assert.match(html, /Waraqah/);
     assert.match(text, /Thank you/);
@@ -194,7 +209,7 @@ test('listAdminMessageTemplates includes the follow-up drafts', () => {
 test('applyAdminMessageTemplate fills we-miss-you and a dashboard button', () => {
     const applied = applyAdminMessageTemplate('we-miss-you', { firstName: 'Ada Lovelace' });
     assert.equal(applied.templateId, 'we-miss-you');
-    assert.equal(applied.subject, 'We miss you at Waraqah');
+    assert.equal(applied.subject, 'Your Waraqah workspace is waiting');
     assert.equal(applied.actionPreset, 'dashboard');
     assert.equal(applied.actionLabel, 'Go to dashboard');
     assert.match(applied.body, /clients, products, and records/);

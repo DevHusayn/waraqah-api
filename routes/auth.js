@@ -91,6 +91,7 @@ import {
     listAdminMessageSenderOptions,
     listAdminMessageTemplates,
     parseAdminMessageInput,
+    resolveAdminMessageGreeting,
 } from '../src/emails/helpers/adminMessage.js';
 
 const router = express.Router();
@@ -1040,18 +1041,34 @@ router.get('/admin/email-options', auth, requireAdmin, (req, res) => {
     });
 });
 
+async function getAdminEmailRecipient(userId) {
+    const [user, business] = await Promise.all([
+        User.findById(userId).select('name email').lean(),
+        BusinessInfo.findOne({ userId }).select('name').lean(),
+    ]);
+    if (!user) return null;
+    return {
+        user,
+        greetingName: resolveAdminMessageGreeting({
+            userName: user.name,
+            businessName: business?.name,
+        }),
+    };
+}
+
 // Admin: preview a message to a user
 router.post('/admin/users/:id/email/preview', auth, requireAdmin, validateObjectId(), async (req, res) => {
     try {
-        const user = await User.findById(req.params.id).select('name email').lean();
-        if (!user) return res.status(404).json({ message: 'User not found' });
+        const recipient = await getAdminEmailRecipient(req.params.id);
+        if (!recipient) return res.status(404).json({ message: 'User not found' });
+        const { user, greetingName } = recipient;
         if (!user.email) {
             return res.status(400).json({ message: 'This user does not have an email address.' });
         }
 
         const payload = parseAdminMessageInput(req.body);
         const rendered = await renderAdminMessageEmail({
-            userName: user.name,
+            userName: greetingName,
             preview: payload.preview,
             body: payload.body,
             noReply: payload.fromPreset === 'noreply',
@@ -1081,8 +1098,9 @@ router.post('/admin/users/:id/email/preview', auth, requireAdmin, validateObject
 // Admin: send a message to a user
 router.post('/admin/users/:id/email', auth, requireAdmin, validateObjectId(), adminEmailLimiter, async (req, res) => {
     try {
-        const user = await User.findById(req.params.id).select('name email').lean();
-        if (!user) return res.status(404).json({ message: 'User not found' });
+        const recipient = await getAdminEmailRecipient(req.params.id);
+        if (!recipient) return res.status(404).json({ message: 'User not found' });
+        const { user, greetingName } = recipient;
         if (!user.email) {
             return res.status(400).json({ message: 'This user does not have an email address.' });
         }
@@ -1092,7 +1110,7 @@ router.post('/admin/users/:id/email', auth, requireAdmin, validateObjectId(), ad
         try {
             await sendAdminMessageEmail({
                 to: user.email,
-                userName: user.name,
+                userName: greetingName,
                 subject: payload.subject,
                 preview: payload.preview,
                 body: payload.body,

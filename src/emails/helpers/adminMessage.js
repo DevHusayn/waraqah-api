@@ -37,13 +37,12 @@ export const ADMIN_MESSAGE_TEMPLATES = [
     {
         id: 'we-miss-you',
         label: 'We miss you',
-        subject: 'We miss you at Waraqah',
-        preview: 'Your workspace and records are still here whenever you are ready.',
+        subject: 'Your Waraqah workspace is waiting',
+        preview: 'Come back in and pick up right where you left off.',
         body: [
-            "It's been a while since we last saw you on Waraqah, and we wanted to check in.",
-            'Your clients, products, and records are still saved and ready whenever you are. If something was not working, just reply to this email. We would genuinely like to fix it.',
-            'Looking forward to having you back.',
-            'The Waraqah Team',
+            'Your workspace is still here, with your clients, products, and records ready to go.',
+            'A few minutes today can get you back in flow. Open your dashboard, update a record, and send your next document.',
+            'If something held you back, reply to this email. We want you running smoothly again.',
         ].join('\n\n'),
         actionPreset: 'dashboard',
         actionLabel: 'Go to dashboard',
@@ -51,13 +50,12 @@ export const ADMIN_MESSAGE_TEMPLATES = [
     {
         id: 'finish-setup',
         label: 'Finish setup',
-        subject: 'Your Waraqah workspace is ready',
-        preview: 'Add your first client or product and start using your workspace.',
+        subject: 'Finish setting up your Waraqah workspace',
+        preview: 'Your workspace is ready. Take the next step today.',
         body: [
-            'Your Waraqah workspace is ready, and you can pick up right where you left off.',
-            'Add a client or product, then create a document and send it. Most people are up and running in a few minutes.',
-            'If you get stuck, reply to this email and we will help.',
-            'The Waraqah Team',
+            'You are closer than you think. Your Waraqah workspace is ready, and the next step takes only a few minutes.',
+            'Add a client or product, create your first document, and send it. Once that is done, the rest of your work has a home.',
+            'Open your dashboard now and finish setup while it is fresh. If you get stuck, reply and we will help.',
         ].join('\n\n'),
         actionPreset: 'dashboard',
         actionLabel: 'Go to dashboard',
@@ -65,13 +63,12 @@ export const ADMIN_MESSAGE_TEMPLATES = [
     {
         id: 'try-premium',
         label: 'Try Premium',
-        subject: 'Ready when you are to grow on Waraqah',
-        preview: 'Premium removes the free-plan limits and keeps your records intact.',
+        subject: 'Give your business more room to grow',
+        preview: 'Premium unlocks branding and higher limits, and keeps your records intact.',
         body: [
-            'If you want more room to grow, branding, or fewer free-plan limits, Premium is ready when you are.',
-            'You can upgrade in a minute and keep all of your existing records.',
-            'Reply if you have any questions about the plan.',
-            'The Waraqah Team',
+            'If you are ready to look more professional and work with fewer limits, Premium is the next step.',
+            'You keep every client, product, and record you already have. Upgrade takes about a minute, and you can start using the extra room right away.',
+            'See what Premium includes and upgrade when you are ready. Reply if you want help choosing a plan.',
         ].join('\n\n'),
         actionPreset: 'upgrade',
         actionLabel: 'Upgrade to Premium',
@@ -79,12 +76,11 @@ export const ADMIN_MESSAGE_TEMPLATES = [
     {
         id: 'billing-help',
         label: 'Billing help',
-        subject: 'A quick note about your Waraqah billing',
-        preview: 'Review your plan and payment method, or reply and we will help.',
+        subject: 'Keep your Waraqah plan running smoothly',
+        preview: 'Review billing in a minute, or reply and we will help.',
         body: [
-            'We wanted to make sure everything is okay with your Waraqah billing.',
-            'You can review your plan, payment method, and billing history from Settings. If a charge failed or something looks off, reply to this email and we will sort it out.',
-            'The Waraqah Team',
+            'A quick check now can prevent a surprise later. Your plan, payment method, and billing history are all in Settings.',
+            'If a charge failed or something looks off, open billing and update it today. We can also sort it out if you reply to this email.',
         ].join('\n\n'),
         actionPreset: 'billing',
         actionLabel: 'Manage billing',
@@ -92,12 +88,11 @@ export const ADMIN_MESSAGE_TEMPLATES = [
     {
         id: 'need-a-hand',
         label: 'Need a hand?',
-        subject: 'Need any help with Waraqah?',
-        preview: 'Reply to this email if something is not working or you have a question.',
+        subject: 'We can help you get more from Waraqah',
+        preview: 'Reply with what you need and we will jump in.',
         body: [
-            'Just checking in to see if you need any help with Waraqah.',
-            'If something is not working, or you have a question about your workspace, clients, or account, reply to this email. We are happy to help.',
-            'The Waraqah Team',
+            'You do not have to figure Waraqah out alone. If something is not working, or you want a faster way to manage clients, products, or your workspace, we are here.',
+            'Reply with what you need. We will help you get unblocked so you can get back to running your business.',
         ].join('\n\n'),
         actionPreset: 'none',
         actionLabel: '',
@@ -146,7 +141,14 @@ export function sanitizeFromName(value) {
         .trim();
 }
 
-/** "Haybah" → "Haybah from Waraqah". Leaves names that already include Waraqah as-is. */
+export function resolveAdminMessageGreeting({ userName, businessName } = {}) {
+    const business = String(businessName || '').trim();
+    if (business) return business;
+    const account = String(userName || '').trim();
+    return account || 'there';
+}
+
+/** "Zahrah" → "Zahrah from Waraqah". Leaves names that already include Waraqah as-is. */
 export function formatFromDisplayName(fromName) {
     const name = sanitizeFromName(fromName);
     if (!name) return '';

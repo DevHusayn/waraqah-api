@@ -1,10 +1,25 @@
 import React from 'react';
 import { Button, Section, Text } from '@react-email/components';
 import EmailLayout, { emailStyles } from '../layouts/EmailLayout.js';
+import { BRAND } from '../config.js';
 import { splitBodyParagraphs } from '../helpers/adminMessage.js';
 
 const NO_REPLY_NOTICE =
     'This email was sent from a no-reply address. Replies to this message are not monitored.';
+
+const greetingStyle = {
+    ...emailStyles.paragraph,
+    fontWeight: 700,
+    color: BRAND.text,
+};
+
+function bodyWithoutSignOff(paragraphs) {
+    if (!paragraphs.length) return paragraphs;
+    if (/^the waraqah team\.?$/i.test(paragraphs[paragraphs.length - 1])) {
+        return paragraphs.slice(0, -1);
+    }
+    return paragraphs;
+}
 
 /**
  * @param {object} props
@@ -24,7 +39,7 @@ export default function AdminMessageEmail({
     actionLabel = '',
 }) {
     const greetingName = userName?.trim() || 'there';
-    const paragraphs = splitBodyParagraphs(body);
+    const paragraphs = bodyWithoutSignOff(splitBodyParagraphs(body));
     const previewText = String(preview || paragraphs[0] || 'A message from Waraqah').trim().slice(0, 140);
     const hasButton = Boolean(actionUrl && actionLabel);
 
@@ -33,7 +48,7 @@ export default function AdminMessageEmail({
         { preview: previewText },
         React.createElement(
             Text,
-            { style: emailStyles.paragraph },
+            { style: greetingStyle },
             `Hi ${greetingName},`,
         ),
         ...(paragraphs.length > 0

@@ -15,7 +15,8 @@ function buildReact({ userName, preview, body, noReply, actionUrl, actionLabel }
 }
 
 function buildPlainText({ body, noReply, actionUrl, actionLabel }) {
-    const parts = [body];
+    const trimmed = String(body || '').trim().replace(/\n{2,}the waraqah team\.?$/i, '').trim();
+    const parts = [trimmed];
     if (actionUrl && actionLabel) {
         parts.push(`${actionLabel}: ${actionUrl}`);
     }
