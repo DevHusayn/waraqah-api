@@ -24,6 +24,10 @@ export function buildListExportFilename(companyName, resource, query = {}) {
     const month = query.month != null && query.month !== '' ? Number(query.month) : null;
     if (period === 'today') {
         filterParts.push('today');
+    } else if (period === 'last-week' || period === 'lastweek') {
+        filterParts.push('last-week');
+    } else if (period === 'last-month' || period === 'lastmonth') {
+        filterParts.push('last-month');
     } else if (Number.isFinite(year) && Number.isFinite(month)) {
         filterParts.push(`${year}-${String(month).padStart(2, '0')}`);
     }

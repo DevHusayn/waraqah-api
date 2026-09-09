@@ -32,6 +32,8 @@ test('parseListPeriodQuery treats omit and all as all-time', () => {
     assert.deepEqual(parseListPeriodQuery({ period: 'all' }), { kind: 'all' });
     assert.deepEqual(parseListPeriodQuery({ period: 'today' }), { kind: 'today' });
     assert.deepEqual(parseListPeriodQuery({ period: 'week' }), { kind: 'week' });
+    assert.deepEqual(parseListPeriodQuery({ period: 'last-week' }), { kind: 'last-week' });
+    assert.deepEqual(parseListPeriodQuery({ period: 'last-month' }), { kind: 'last-month' });
     assert.deepEqual(parseListPeriodQuery({ period: 'year' }), { kind: 'year' });
     assert.deepEqual(parseListPeriodQuery({ period: 'month', year: '2026', month: '8' }), {
         kind: 'month',

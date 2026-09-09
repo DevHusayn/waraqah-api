@@ -106,6 +106,23 @@ test('parsePeriodQuery supports week, year, and custom range', () => {
         endMonth: 8,
         endDay: 15,
     });
+    assert.deepEqual(
+        parsePeriodQuery({ period: 'last-week' }, 'Africa/Lagos', now),
+        {
+            kind: 'week',
+            startYear: 2026,
+            startMonth: 8,
+            startDay: 2,
+            endYear: 2026,
+            endMonth: 8,
+            endDay: 8,
+        }
+    );
+    assert.deepEqual(parsePeriodQuery({ period: 'last-month' }, 'Africa/Lagos', now), {
+        kind: 'month',
+        year: 2026,
+        month: 7,
+    });
     assert.deepEqual(parsePeriodQuery({ period: 'year' }, 'Africa/Lagos', now), {
         kind: 'year',
         year: 2026,

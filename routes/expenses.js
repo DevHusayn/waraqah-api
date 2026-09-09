@@ -20,6 +20,7 @@ import { getBusinessTimezone, resolveAnalyticsPeriod } from '../utils/timezone.j
 import { getExpenseSummaryForUser } from '../utils/expenseAnalytics.js';
 import { applyListRecurringAndDateFilter } from '../utils/recurringListFilter.js';
 import { EXPENSE_LIST_SORT, resolveListSort } from '../utils/listSort.js';
+import { uniqueVendorNames } from '../utils/expenseVendors.js';
 
 const router = express.Router();
 
@@ -28,6 +29,14 @@ router.get('/summary', auth, asyncHandler(async (req, res) => {
     const period = resolveAnalyticsPeriod(req.query, timeZone);
     const summary = await getExpenseSummaryForUser(req.user.userId, { period, timeZone });
     res.json(summary);
+}));
+
+router.get('/vendors', auth, asyncHandler(async (req, res) => {
+    const names = await Expense.distinct('vendor', {
+        userId: req.user.userId,
+        vendor: { $nin: [null, ''] },
+    });
+    res.json(uniqueVendorNames(names));
 }));
 
 router.get('/', auth, asyncHandler(async (req, res) => {

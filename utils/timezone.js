@@ -109,6 +109,22 @@ export function getWeekBoundsInTimezone(timeZone, now = new Date()) {
     return { start, end };
 }
 
+export function getLastWeekBoundsInTimezone(timeZone, now = new Date()) {
+    const { start } = getWeekBoundsInTimezone(timeZone, now);
+    const prevStart = shiftDateByDays(start.year, start.month, start.day, -7);
+    const prevEnd = shiftDateByDays(prevStart.year, prevStart.month, prevStart.day, 6);
+    return { start: prevStart, end: prevEnd };
+}
+
+export function getLastYearMonthInTimezone(timeZone, now = new Date()) {
+    const { year, month } = getYearMonthInTimezone(timeZone, now);
+    const index = year * 12 + (month - 1) - 1;
+    return {
+        year: Math.floor(index / 12),
+        month: (index % 12) + 1,
+    };
+}
+
 function buildRangePeriod(start, end) {
     return {
         kind: 'range',
@@ -172,6 +188,13 @@ export function parsePeriodQuery(query = {}, timeZone, now = new Date()) {
     if (raw === 'week') {
         const { start, end } = getWeekBoundsInTimezone(timeZone, now);
         return buildWeekPeriod(start, end);
+    }
+    if (raw === 'last-week' || raw === 'lastweek') {
+        const { start, end } = getLastWeekBoundsInTimezone(timeZone, now);
+        return buildWeekPeriod(start, end);
+    }
+    if (raw === 'last-month' || raw === 'lastmonth') {
+        return { kind: 'month', ...getLastYearMonthInTimezone(timeZone, now) };
     }
     if (raw === 'year') {
         const { year } = getDatePartsInTimezone(timeZone, now);
@@ -309,6 +332,12 @@ export function formatAnalyticsPeriodLabel(period, locale = 'en-US', timeZone = 
             period.startMonth === currentWeek.start.month &&
             period.startDay === currentWeek.start.day;
         if (isCurrentWeek) return 'This week';
+        const lastWeek = getLastWeekBoundsInTimezone(timeZone);
+        const isLastWeek =
+            period.startYear === lastWeek.start.year &&
+            period.startMonth === lastWeek.start.month &&
+            period.startDay === lastWeek.start.day;
+        if (isLastWeek) return 'Last week';
         return formatDateRangeLabel(
             { year: period.startYear, month: period.startMonth, day: period.startDay },
             { year: period.endYear, month: period.endMonth, day: period.endDay },
@@ -327,6 +356,8 @@ export function formatAnalyticsPeriodLabel(period, locale = 'en-US', timeZone = 
             locale
         );
     }
+    const lastMonth = getLastYearMonthInTimezone(timeZone);
+    if (period.year === lastMonth.year && period.month === lastMonth.month) return 'Last month';
     const date = new Date(Date.UTC(period.year, period.month - 1, 1));
     return new Intl.DateTimeFormat(locale, { month: 'short', year: 'numeric', timeZone: 'UTC' }).format(
         date

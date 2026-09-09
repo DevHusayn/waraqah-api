@@ -7,6 +7,8 @@ import {
     getUtcRangeForWeekInTimezone,
     getUtcRangeForYearInTimezone,
     getWeekBoundsInTimezone,
+    getLastWeekBoundsInTimezone,
+    getLastYearMonthInTimezone,
     parseDateInputValue,
     toDateInputValue,
     shiftDateByDays,
@@ -33,6 +35,12 @@ export function parseListPeriodQuery(query = {}) {
     }
     if (raw === 'week') {
         return { kind: 'week' };
+    }
+    if (raw === 'last-week' || raw === 'lastweek') {
+        return { kind: 'last-week' };
+    }
+    if (raw === 'last-month' || raw === 'lastmonth') {
+        return { kind: 'last-month' };
     }
     if (raw === 'year') {
         return { kind: 'year' };
@@ -126,6 +134,11 @@ export async function getListPeriodMongoFilter(query, userId, { dateField = 'dat
             const { start, end } = getUtcRangeForWeekInTimezone(timeZone);
             return { createdAt: { $gte: start, $lt: end } };
         }
+        if (parsed.kind === 'last-week') {
+            const bounds = getLastWeekBoundsInTimezone(timeZone);
+            const { start, end } = getUtcRangeForDateRangeInTimezone(bounds.start, bounds.end, timeZone);
+            return { createdAt: { $gte: start, $lt: end } };
+        }
         if (parsed.kind === 'year') {
             const { year } = getDatePartsInTimezone(timeZone);
             const { start, end } = getUtcRangeForYearInTimezone(year, timeZone);
@@ -140,6 +153,11 @@ export async function getListPeriodMongoFilter(query, userId, { dateField = 'dat
             const { start, end } = getUtcRangeForMonthInTimezone(parts.year, parts.month, timeZone);
             return { createdAt: { $gte: start, $lt: end } };
         }
+        if (parsed.kind === 'last-month') {
+            const lastMonth = getLastYearMonthInTimezone(timeZone);
+            const { start, end } = getUtcRangeForMonthInTimezone(lastMonth.year, lastMonth.month, timeZone);
+            return { createdAt: { $gte: start, $lt: end } };
+        }
         const { start, end } = getUtcRangeForMonthInTimezone(parsed.year, parsed.month, timeZone);
         return { createdAt: { $gte: start, $lt: end } };
     }
@@ -152,6 +170,10 @@ export async function getListPeriodMongoFilter(query, userId, { dateField = 'dat
         const { start, end } = getWeekBoundsInTimezone(timeZone);
         return buildIssueDateRangeFilter(start, end);
     }
+    if (parsed.kind === 'last-week') {
+        const { start, end } = getLastWeekBoundsInTimezone(timeZone);
+        return buildIssueDateRangeFilter(start, end);
+    }
     if (parsed.kind === 'year') {
         const { year } = getDatePartsInTimezone(timeZone);
         return buildIssueDateYearFilter(year);
@@ -162,6 +184,10 @@ export async function getListPeriodMongoFilter(query, userId, { dateField = 'dat
     if (parsed.kind === 'month-current') {
         const parts = getDatePartsInTimezone(timeZone);
         return buildIssueDateMonthFilter(parts.year, parts.month);
+    }
+    if (parsed.kind === 'last-month') {
+        const lastMonth = getLastYearMonthInTimezone(timeZone);
+        return buildIssueDateMonthFilter(lastMonth.year, lastMonth.month);
     }
 
     return buildIssueDateMonthFilter(parsed.year, parsed.month);
