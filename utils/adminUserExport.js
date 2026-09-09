@@ -73,9 +73,14 @@ function formatQuota(usage) {
     return `${usage.used ?? 0}/${usage.limit ?? 5}`;
 }
 
+function signInLabel(user) {
+    return user?.authProvider === 'google' ? 'Google' : 'Email & password';
+}
+
 const CSV_HEADERS = [
     'Name',
     'Email',
+    'Sign-in',
     'Business name',
     'Phone',
     'Status',
@@ -94,6 +99,7 @@ export function adminUsersToCsv(users) {
         return [
             escapeCsvField(user.displayName || user.name || business.name || ''),
             escapeCsvField(user.email || ''),
+            escapeCsvField(signInLabel(user)),
             escapeCsvField(business.name || ''),
             phone ? excelTextCsvField(phone) : escapeCsvField(''),
             escapeCsvField(user.status || ''),

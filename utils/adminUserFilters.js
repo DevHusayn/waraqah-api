@@ -7,6 +7,7 @@ import { escapeRegex } from './pagination.js';
 
 const VALID_PLANS = new Set(['free', 'premium']);
 const VALID_STATUSES = new Set(['active', 'suspended', 'admin']);
+const VALID_AUTH = new Set(['google', 'email']);
 
 const ACTIVITY_SLUGS = {
     has_workspace: 'with-workspace',
@@ -38,7 +39,8 @@ export function parseAdminUserFilters(query = {}) {
     const plan = VALID_PLANS.has(query.plan) ? query.plan : 'all';
     const status = VALID_STATUSES.has(query.status) ? query.status : 'all';
     const activity = VALID_ACTIVITY.has(query.activity) ? query.activity : 'all';
-    return { search, plan, status, activity };
+    const auth = VALID_AUTH.has(query.auth) ? query.auth : 'all';
+    return { search, plan, status, activity, auth };
 }
 
 async function distinctUserIds(Model, query = {}) {
@@ -163,13 +165,19 @@ async function buildActivityCondition(activity) {
 }
 
 /** Build a MongoDB filter for admin user list/export (AND logic across filters). */
-export async function buildAdminUserFilter({ search, plan, status, activity }) {
+export async function buildAdminUserFilter({ search, plan, status, activity, auth }) {
     const conditions = [];
 
     if (status === 'admin') {
         conditions.push({ isAdmin: true });
     } else if (status !== 'all') {
         conditions.push({ status });
+    }
+
+    if (auth === 'google') {
+        conditions.push({ authProvider: 'google' });
+    } else if (auth === 'email') {
+        conditions.push({ $nor: [{ authProvider: 'google' }] });
     }
 
     if (search) {
@@ -205,10 +213,11 @@ export async function buildAdminUserFilter({ search, plan, status, activity }) {
 }
 
 /** Short slug for export filenames, e.g. free-active or all. */
-export function buildAdminUserFilterSlug({ plan, status, activity, search }) {
+export function buildAdminUserFilterSlug({ plan, status, activity, auth, search }) {
     const parts = [];
     if (plan !== 'all') parts.push(plan);
     if (status !== 'all') parts.push(status);
+    if (auth !== 'all') parts.push(auth);
     const activitySlug = activityFilterSlug(activity);
     if (activitySlug) parts.push(activitySlug);
     if (search) parts.push('search');
