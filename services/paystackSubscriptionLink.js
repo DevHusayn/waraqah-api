@@ -2,7 +2,6 @@ import User from '../models/User.js';
 import Payment from '../models/Payment.js';
 import BusinessInfo from '../models/CompanyInfo.js';
 import { activatePremiumForUser, isPremiumActive, linkPaystackSubscription } from './premiumActivation.js';
-import { getOrCreatePremiumPlanCode } from './paystackPlan.js';
 import {
     fetchCustomer,
     fetchSubscription,
@@ -48,8 +47,21 @@ function normalizeSubscriptionList(result) {
     return [];
 }
 
-function pickLatestActiveSubscription(subscriptions) {
-    const active = subscriptions.filter((sub) => {
+export function pickLatestActiveSubscription(subscriptions, billingInterval = null) {
+    const normalized = normalizeSubscriptionList(subscriptions);
+    const wanted = billingInterval === 'yearly'
+        ? 'annually'
+        : billingInterval === 'monthly'
+            ? 'monthly'
+            : '';
+    const matching = wanted
+        ? normalized.filter((sub) => {
+            const planInterval = String(sub?.plan?.interval || sub?.interval || '').toLowerCase();
+            return !planInterval || planInterval === wanted;
+        })
+        : normalized;
+    const pool = matching.length > 0 ? matching : normalized;
+    const active = pool.filter((sub) => {
         const status = String(sub?.status || '').toLowerCase();
         return status === 'active' || status === 'non-renewing';
     });
@@ -65,9 +77,8 @@ async function findSubscriptionCodeForCustomer(customerCode, billingInterval) {
     if (!customerCode) return '';
 
     try {
-        const planCode = await getOrCreatePremiumPlanCode(billingInterval);
-        const listed = await listSubscriptions({ customer: customerCode, plan: planCode });
-        const match = pickLatestActiveSubscription(normalizeSubscriptionList(listed));
+        const listed = await listSubscriptions({ customer: customerCode });
+        const match = pickLatestActiveSubscription(listed, billingInterval);
         return match?.subscription_code || match?.code || '';
     } catch (err) {
         console.error('[Paystack] listSubscriptions failed:', err.message);

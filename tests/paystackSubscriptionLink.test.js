@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     needsSubscriptionLink,
+    pickLatestActiveSubscription,
     subscriptionMetaFromCharge,
 } from '../services/paystackSubscriptionLink.js';
 
@@ -31,6 +32,28 @@ test('subscriptionMetaFromCharge reads subscription.create payload shape', () =>
     assert.equal(meta.subscriptionCode, 'SUB_789');
     assert.equal(meta.customerCode, 'CUS_999');
     assert.equal(meta.emailToken, 'token_xyz');
+});
+
+test('pickLatestActiveSubscription prefers the matching billing interval', () => {
+    const match = pickLatestActiveSubscription(
+        [
+            {
+                subscription_code: 'SUB_YEARLY',
+                status: 'active',
+                plan: { interval: 'annually' },
+                updatedAt: '2026-09-13T12:00:00.000Z',
+            },
+            {
+                subscription_code: 'SUB_MONTHLY',
+                status: 'active',
+                plan: { interval: 'monthly' },
+                updatedAt: '2026-09-13T11:00:00.000Z',
+            },
+        ],
+        'monthly',
+    );
+
+    assert.equal(match?.subscription_code, 'SUB_MONTHLY');
 });
 
 test('needsSubscriptionLink is true when subscription code or status is missing', () => {

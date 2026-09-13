@@ -19,7 +19,7 @@ import {
     normalizeBillingInterval,
 } from '../services/paystack.js';
 import { getOrCreatePremiumPlanCode } from '../services/paystackPlan.js';
-import { activatePremiumForUser, deactivatePremiumSubscription } from '../services/premiumActivation.js';
+import { activatePremiumForUser, deactivatePremiumSubscription, linkPaystackSubscription } from '../services/premiumActivation.js';
 import {
     ensurePaystackSubscriptionLinked,
     needsSubscriptionLink,
@@ -93,7 +93,7 @@ async function disablePreviousMonthlySubscription(userId) {
     }
 }
 
-async function fulfillPremiumPayment(payment, paystackData) {
+async function fulfillPremiumPayment(payment, paystackData, { resolveSubscription = true } = {}) {
     const firstFulfillment = payment.status !== 'success';
     const billingInterval = normalizeBillingInterval(payment.billingInterval || 'monthly');
     const months = monthsForInterval(billingInterval);
@@ -115,24 +115,31 @@ async function fulfillPremiumPayment(payment, paystackData) {
         }
     }
 
-    await ensurePaystackSubscriptionLinked({
-        userId: payment.userId,
-        payment,
-        paystackData,
-    });
-
-    const info = await BusinessInfo.findOne({ userId: payment.userId });
-    if (firstFulfillment && !isPremiumActive(info)) {
-        await activatePremiumForUser(payment.userId, {
+    let info = await BusinessInfo.findOne({ userId: payment.userId });
+    if (!isPremiumActive(info)) {
+        info = await activatePremiumForUser(payment.userId, {
             months,
             billingInterval,
             subscription: subMeta.subscriptionCode ? subMeta : null,
             fromPayment: true,
         });
+    } else if (subMeta.subscriptionCode && needsSubscriptionLink(info)) {
+        info = await linkPaystackSubscription(payment.userId, {
+            subscription: subMeta,
+            billingInterval,
+        });
     }
 
     if (firstFulfillment) {
         await notifyPremiumUpgradeSuccess(payment.userId, { billingInterval });
+    }
+
+    if (resolveSubscription && needsSubscriptionLink(info)) {
+        await ensurePaystackSubscriptionLinked({
+            userId: payment.userId,
+            payment,
+            paystackData,
+        });
     }
 
     return payment;
@@ -386,7 +393,7 @@ router.post('/initialize', auth, requireEmailVerified, async (req, res) => {
     }
 });
 
-/** Verify after Paystack redirect — checks local DB before calling Paystack */
+/** Verify after Paystack redirect — returns as soon as Premium is active. */
 router.get('/verify/:reference', auth, paymentVerificationLimiter, async (req, res) => {
     try {
         const reference = req.params.reference;
@@ -400,60 +407,50 @@ router.get('/verify/:reference', auth, paymentVerificationLimiter, async (req, r
 
         let businessInfo = await BusinessInfo.findOne({ userId: req.user.userId });
         const billingInterval = normalizeBillingInterval(payment.billingInterval || 'monthly');
-        let paystackData = null;
-        let alreadyVerified = payment.status === 'success';
+
+        const respondVerified = (info, alreadyVerified) => res.json({
+            message: renewalMessage(billingInterval),
+            businessInfo: toBusinessInfoResponse(info),
+            alreadyVerified,
+        });
+
+        if (payment.status === 'success' && isPremiumActive(businessInfo)) {
+            return respondVerified(businessInfo, true);
+        }
 
         if (payment.status !== 'success') {
             if (payment.status === 'pending' && isPremiumActive(businessInfo)) {
                 payment.status = 'success';
                 payment.paidAt = payment.paidAt || new Date();
                 await payment.save();
-                alreadyVerified = true;
-            } else {
-                paystackData = await verifyTransaction(reference);
-                if (paystackData.status !== 'success') {
-                    payment.status = 'failed';
-                    await payment.save();
-                    return res.status(400).json({
-                        message: 'Payment was not completed',
-                        status: paystackData.status,
-                    });
-                }
-
-                await fulfillPremiumPayment(payment, paystackData);
-                alreadyVerified = false;
+                return respondVerified(businessInfo, true);
             }
+
+            const paystackData = await verifyTransaction(reference);
+            if (paystackData.status !== 'success') {
+                payment.status = 'failed';
+                await payment.save();
+                return res.status(400).json({
+                    message: 'Payment was not completed',
+                    status: paystackData.status,
+                });
+            }
+
+            await fulfillPremiumPayment(payment, paystackData, { resolveSubscription: false });
+            businessInfo = await BusinessInfo.findOne({ userId: req.user.userId });
+            return respondVerified(businessInfo, false);
         }
 
-        if (!paystackData) {
-            try {
-                paystackData = await verifyTransaction(reference);
-            } catch (err) {
-                console.error('[Paystack] verifyTransaction during subscription sync failed:', err.message);
-            }
-        }
-
-        businessInfo = await ensurePaystackSubscriptionLinked({
-            userId: req.user.userId,
-            payment,
-            paystackData,
-        }) || await BusinessInfo.findOne({ userId: req.user.userId });
-
-        if (!isPremiumActive(businessInfo) && payment.status === 'success') {
-            const subMeta = subscriptionMetaFromCharge(paystackData);
+        if (!isPremiumActive(businessInfo)) {
             businessInfo = await activatePremiumForUser(req.user.userId, {
                 months: monthsForInterval(billingInterval),
                 billingInterval,
-                subscription: subMeta.subscriptionCode ? subMeta : null,
+                subscription: null,
                 fromPayment: true,
             });
         }
 
-        res.json({
-            message: renewalMessage(billingInterval),
-            businessInfo: toBusinessInfoResponse(businessInfo),
-            alreadyVerified,
-        });
+        return respondVerified(businessInfo, true);
     } catch (err) {
         res.status(500).json({ message: err.message || 'Verification failed' });
     }
@@ -492,9 +489,26 @@ router.post('/subscription/sync', auth, async (req, res) => {
 /** Cancel auto-renewal (stays premium until premiumUntil) */
 router.post('/subscription/cancel', auth, async (req, res) => {
     try {
-        const info = await BusinessInfo.findOne({ userId: req.user.userId });
+        let info = await BusinessInfo.findOne({ userId: req.user.userId });
+
         if (!info?.paystackSubscriptionCode) {
-            return res.status(400).json({ message: 'No active subscription found' });
+            const payment = await Payment.findOne({
+                userId: req.user.userId,
+                type: 'subscription',
+                status: 'success',
+            }).sort({ paidAt: -1, createdAt: -1 });
+
+            info = await ensurePaystackSubscriptionLinked({
+                userId: req.user.userId,
+                payment,
+                paystackData: null,
+            }) || info;
+        }
+
+        if (!info?.paystackSubscriptionCode) {
+            return res.status(400).json({
+                message: 'No active Paystack subscription found yet. If you just paid, wait a moment and try again.',
+            });
         }
 
         let emailToken = info.paystackEmailToken;
@@ -502,17 +516,18 @@ router.post('/subscription/cancel', auth, async (req, res) => {
             const sub = await fetchSubscription(info.paystackSubscriptionCode);
             emailToken = sub.email_token;
             info.paystackEmailToken = emailToken;
+            await info.save();
         }
 
         await disableSubscription(info.paystackSubscriptionCode, emailToken);
-        await deactivatePremiumSubscription(req.user.userId);
+        const updated = await deactivatePremiumSubscription(req.user.userId);
         await notifyPremiumSubscriptionCancelled(req.user.userId, {
             billingInterval: info.billingInterval,
         });
 
         res.json({
             message: 'Auto-renewal cancelled. Premium remains until the end of your billing period.',
-            businessInfo: toBusinessInfoResponse(info),
+            businessInfo: toBusinessInfoResponse(updated),
         });
     } catch (err) {
         res.status(500).json({ message: err.message || 'Could not cancel subscription' });
