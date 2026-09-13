@@ -83,7 +83,7 @@ test('computeDocumentProfit tracks lines missing cost data', () => {
     assert.equal(profit.grossProfit, 0);
 });
 
-test('computeDocumentProfit excludes manual line items from gross profit', () => {
+test('computeDocumentProfit treats service lines as full-margin profit', () => {
     const doc = {
         status: 'paid',
         total: 500,
@@ -100,8 +100,116 @@ test('computeDocumentProfit excludes manual line items from gross profit', () =>
 
     const profit = computeDocumentProfit(doc);
     assert.equal(profit.revenue, 500);
-    assert.equal(profit.grossProfit, 0);
+    assert.equal(profit.cogs, 0);
+    assert.equal(profit.grossProfit, 500);
     assert.equal(profit.linesMissingCost, 0);
+});
+
+test('computeDocumentProfit mixes product cost with service-line margin', () => {
+    const doc = {
+        status: 'paid',
+        total: 700,
+        amountPaid: 700,
+        discount: 0,
+        items: [
+            {
+                productId: 'p1',
+                quantity: 1,
+                rate: 500,
+                unitCost: 200,
+            },
+            {
+                description: 'Installation',
+                quantity: 1,
+                rate: 200,
+            },
+        ],
+    };
+
+    const profit = computeDocumentProfit(doc);
+    assert.equal(profit.revenue, 700);
+    assert.equal(profit.cogs, 200);
+    assert.equal(profit.grossProfit, 500);
+    assert.equal(profit.linesWithCost, 1);
+    assert.equal(profit.linesMissingCost, 0);
+});
+
+test('computeDocumentProfit treats untracked zero-cost catalog products as full-margin services', () => {
+    const productCostById = new Map([
+        ['consulting', { unitCost: 0, trackInventory: false }],
+    ]);
+    const doc = {
+        status: 'paid',
+        total: 800,
+        amountPaid: 800,
+        discount: 0,
+        items: [
+            {
+                productId: 'consulting',
+                description: 'Website design',
+                quantity: 1,
+                rate: 800,
+                unitCost: 0,
+            },
+        ],
+    };
+
+    const profit = computeDocumentProfit(doc, productCostById);
+    assert.equal(profit.revenue, 800);
+    assert.equal(profit.cogs, 0);
+    assert.equal(profit.grossProfit, 800);
+    assert.equal(profit.linesMissingCost, 0);
+    assert.equal(profit.linesWithCost, 0);
+});
+
+test('computeDocumentProfit uses cost on untracked products when unit cost is set', () => {
+    const productCostById = new Map([
+        ['consulting', { unitCost: 50, trackInventory: false }],
+    ]);
+    const doc = {
+        status: 'paid',
+        total: 800,
+        amountPaid: 800,
+        discount: 0,
+        items: [
+            {
+                productId: 'consulting',
+                quantity: 1,
+                rate: 800,
+                unitCost: 0,
+            },
+        ],
+    };
+
+    const profit = computeDocumentProfit(doc, productCostById);
+    assert.equal(profit.cogs, 50);
+    assert.equal(profit.grossProfit, 750);
+    assert.equal(profit.linesWithCost, 1);
+    assert.equal(profit.linesMissingCost, 0);
+});
+
+test('computeDocumentProfit still flags tracked products that are missing cost', () => {
+    const productCostById = new Map([
+        ['p1', { unitCost: 0, trackInventory: true }],
+    ]);
+    const doc = {
+        status: 'paid',
+        total: 500,
+        amountPaid: 500,
+        discount: 0,
+        items: [
+            {
+                productId: 'p1',
+                quantity: 1,
+                rate: 500,
+                unitCost: 0,
+            },
+        ],
+    };
+
+    const profit = computeDocumentProfit(doc, productCostById);
+    assert.equal(profit.linesMissingCost, 1);
+    assert.equal(profit.grossProfit, 0);
 });
 
 test('computeDocumentProfit falls back to catalog cost when line snapshot is missing', () => {
@@ -153,6 +261,36 @@ test('computePeriodProfitFromDocs buckets by issue month', () => {
     assert.equal(feb.totals.cogs, 600);
     assert.equal(feb.totals.grossProfit, 400);
     assert.equal(feb.byProduct.length, 1);
+});
+
+test('computePeriodProfitFromDocs includes untracked zero-cost services in product profit', () => {
+    const productCostById = new Map([
+        ['consulting', { unitCost: 0, trackInventory: false }],
+    ]);
+    const docs = [
+        {
+            date: '2026-02-10T00:00:00.000Z',
+            status: 'paid',
+            total: 800,
+            amountPaid: 800,
+            discount: 0,
+            items: [
+                {
+                    productId: 'consulting',
+                    description: 'Website design',
+                    quantity: 1,
+                    rate: 800,
+                    unitCost: 0,
+                },
+            ],
+        },
+    ];
+
+    const feb = computePeriodProfitFromDocs(docs, 2026, 2, 'UTC', productCostById);
+    assert.equal(feb.totals.grossProfit, 800);
+    assert.equal(feb.totals.linesMissingCost, 0);
+    assert.equal(feb.byProduct.length, 1);
+    assert.equal(feb.byProduct[0].grossProfit, 800);
 });
 
 test('buildProfitTrendFromDocs fills monthly gross profit buckets', () => {

@@ -23,20 +23,39 @@ function collectProductIdsFromDocs(docs) {
     return productIds;
 }
 
+function getCatalogEntry(productCostById, productId) {
+    if (!productCostById || !productId) return null;
+    const entry = productCostById.get(String(productId));
+    if (entry == null) return null;
+    if (typeof entry === 'number') {
+        return { unitCost: entry, trackInventory: true };
+    }
+    return {
+        unitCost: Number(entry.unitCost) || 0,
+        trackInventory: Boolean(entry.trackInventory),
+    };
+}
+
 /** Prefer saved line snapshot; fall back to current catalog cost when snapshot is missing/zero. */
 export function resolveLineUnitCost(item, productCostById = null) {
     const snapshot = Number(item?.unitCost) || 0;
     if (snapshot > 0) return snapshot;
 
-    if (!item?.productId || !productCostById) return 0;
-
-    const catalogCost = productCostById.get(String(item.productId));
-    return Number(catalogCost) > 0 ? roundMoney(catalogCost) : 0;
+    const entry = getCatalogEntry(productCostById, item?.productId);
+    return Number(entry?.unitCost) > 0 ? roundMoney(entry.unitCost) : 0;
 }
 
 export function lineHasCostData(item, productCostById = null) {
     if (!item?.productId) return false;
     return resolveLineUnitCost(item, productCostById) > 0;
+}
+
+/** Manual lines, or untracked catalog products with no unit cost (freelancer services). */
+export function lineIsZeroCostService(item, productCostById = null) {
+    if (!item?.productId) return true;
+    if (lineHasCostData(item, productCostById)) return false;
+    const entry = getCatalogEntry(productCostById, item.productId);
+    return entry != null && !entry.trackInventory;
 }
 
 export async function loadProductCostMap(userId, docs) {
@@ -48,11 +67,17 @@ export async function loadProductCostMap(userId, docs) {
         userId: uid,
         _id: { $in: [...productIds].map((id) => new mongoose.Types.ObjectId(id)) },
     })
-        .select('unitCost')
+        .select('unitCost trackInventory')
         .lean();
 
     return new Map(
-        products.map((product) => [String(product._id), roundMoney(product.unitCost)])
+        products.map((product) => [
+            String(product._id),
+            {
+                unitCost: roundMoney(product.unitCost),
+                trackInventory: Boolean(product.trackInventory),
+            },
+        ])
     );
 }
 

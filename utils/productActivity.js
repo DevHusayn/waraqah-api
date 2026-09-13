@@ -30,7 +30,13 @@ function extractMatchingItems(items, productId) {
     return items.filter((item) => item?.productId && String(item.productId) === target);
 }
 
-function sumMatchingLines(items, productId, catalogUnitCost = 0, discountRatio = 0) {
+function sumMatchingLines(
+    items,
+    productId,
+    catalogUnitCost = 0,
+    discountRatio = 0,
+    { trackInventory = true } = {}
+) {
     const matches = extractMatchingItems(items, productId);
     let quantity = 0;
     let lineTotal = 0;
@@ -47,8 +53,11 @@ function sumMatchingLines(items, productId, catalogUnitCost = 0, discountRatio =
     }
 
     const adjustedLineTotal = roundMoney(lineTotal * (1 - discountRatio));
+    const treatAsZeroCostService = !trackInventory && lineCogs <= 0;
     const adjustedLineProfit =
-        lineCogs > 0 ? roundMoney(adjustedLineTotal - lineCogs) : 0;
+        lineCogs > 0 || treatAsZeroCostService
+            ? roundMoney(adjustedLineTotal - lineCogs)
+            : 0;
 
     return {
         quantity,
@@ -86,10 +95,19 @@ function computeInvoiceLineUnpaidRatio(doc, documentType) {
     return 0;
 }
 
-function buildTransaction(doc, documentType, productId, clientMap, catalogUnitCost = 0) {
+function buildTransaction(
+    doc,
+    documentType,
+    productId,
+    clientMap,
+    catalogUnitCost = 0,
+    { trackInventory = true } = {}
+) {
     const discountRatio =
         documentType === 'quotation' ? 0 : computeDocumentDiscountRatio(doc, doc.items);
-    const sums = sumMatchingLines(doc.items, productId, catalogUnitCost, discountRatio);
+    const sums = sumMatchingLines(doc.items, productId, catalogUnitCost, discountRatio, {
+        trackInventory,
+    });
     if (sums.quantity <= 0 && sums.lineTotal <= 0) return null;
 
     const countsAsSale = documentType !== 'quotation' && docCountsAsRealizedSale(doc);
@@ -220,9 +238,12 @@ export async function getProductActivity(userId, productId) {
     const clientRollup = new Map();
 
     const catalogUnitCost = product.unitCost ?? 0;
+    const trackInventory = Boolean(product.trackInventory);
 
     for (const doc of invoices) {
-        const row = buildTransaction(doc, 'invoice', productId, clientMap, catalogUnitCost);
+        const row = buildTransaction(doc, 'invoice', productId, clientMap, catalogUnitCost, {
+            trackInventory,
+        });
         if (row) {
             transactions.push(row);
             if (row.countsAsSale) {
@@ -232,7 +253,9 @@ export async function getProductActivity(userId, productId) {
     }
 
     for (const doc of receipts) {
-        const row = buildTransaction(doc, 'receipt', productId, clientMap, catalogUnitCost);
+        const row = buildTransaction(doc, 'receipt', productId, clientMap, catalogUnitCost, {
+            trackInventory,
+        });
         if (row) {
             transactions.push(row);
             if (row.countsAsSale) {
@@ -242,7 +265,9 @@ export async function getProductActivity(userId, productId) {
     }
 
     for (const doc of quotations) {
-        const row = buildTransaction(doc, 'quotation', productId, clientMap, catalogUnitCost);
+        const row = buildTransaction(doc, 'quotation', productId, clientMap, catalogUnitCost, {
+            trackInventory,
+        });
         if (row) transactions.push(row);
     }
 

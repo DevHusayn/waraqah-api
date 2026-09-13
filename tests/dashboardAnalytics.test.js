@@ -263,6 +263,8 @@ test('computePeriodPaymentBreakdownFromDocs counts statuses for the selected iss
     const breakdown = computePeriodPaymentBreakdownFromDocs(docs, 2026, 8, 'UTC');
 
     assert.deepEqual(breakdown, {
+        fullyReceived: 2,
+        partiallyReceived: 2,
         partialInvoices: 1,
         partialReceipts: 1,
         pending: 0,

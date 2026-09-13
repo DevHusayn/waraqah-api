@@ -12,7 +12,12 @@ import {
     normalizeTimezone,
     previousAnalyticsPeriod,
 } from './timezone.js';
-import { loadProductCostMap, resolveLineUnitCost, lineHasCostData } from './productCostResolver.js';
+import {
+    loadProductCostMap,
+    resolveLineUnitCost,
+    lineHasCostData,
+    lineIsZeroCostService,
+} from './productCostResolver.js';
 import {
     computeDocumentDiscountRatio,
     computeLineSubtotal,
@@ -106,16 +111,17 @@ export function computeDocumentProfit(doc, productCostById = null) {
         const adjustedRevenue = lineRevenue * (1 - discountRatio);
         const unitCost = resolveLineUnitCost(item, productCostById);
         const hasCost = lineHasCostData(item, productCostById);
+        const isZeroCostService = lineIsZeroCostService(item, productCostById);
 
         revenue += adjustedRevenue;
-        if (item.productId) {
-            if (hasCost) {
-                costedRevenue += adjustedRevenue;
-                cogs += qty * unitCost;
-                linesWithCost += 1;
-            } else {
-                linesMissingCost += 1;
-            }
+        if (hasCost) {
+            costedRevenue += adjustedRevenue;
+            cogs += qty * unitCost;
+            linesWithCost += 1;
+        } else if (isZeroCostService) {
+            costedRevenue += adjustedRevenue;
+        } else if (item.productId) {
+            linesMissingCost += 1;
         }
     }
 
@@ -178,9 +184,11 @@ export function computePeriodProfitFromDocs(docs, year, month, timeZone, product
             const rate = Number(item.rate) || 0;
             const unitCost = resolveLineUnitCost(item, productCostById);
             const hasCost = lineHasCostData(item, productCostById);
+            const isZeroCostService = lineIsZeroCostService(item, productCostById);
             const lineRevenue = roundMoney(qty * rate * (1 - discountRatio) * paidRatio);
             const lineCogs = hasCost ? roundMoney(qty * unitCost * paidRatio) : 0;
-            const lineProfit = hasCost ? roundMoney(lineRevenue - lineCogs) : 0;
+            const lineProfit =
+                hasCost || isZeroCostService ? roundMoney(lineRevenue - lineCogs) : 0;
 
             const existing = byProduct.get(productId) || {
                 productId,

@@ -263,6 +263,8 @@ export function computePeriodPaymentBreakdownFromDocs(docs, year, month, timeZon
     const total = issuedInPeriod + overdue;
 
     return {
+        fullyReceived: fullyPaidInvoices + fullyPaidReceipts,
+        partiallyReceived: partialInvoices + partialReceipts,
         partialInvoices,
         partialReceipts,
         pending,
