@@ -16,6 +16,7 @@ import { buildClientEmailBranding, getClientEmailFromAddress } from '../helpers/
  * @param {string|Date} params.dueDate - Due date
  * @param {string} params.invoiceUrl - Public invoice URL
  * @param {string} params.businessName - Sender business name
+ * @param {string} [params.replyTo] - Merchant reply address
  * @param {object} [params.branding] - Business branding tokens
  */
 export async function sendInvoiceEmail({
@@ -27,6 +28,7 @@ export async function sendInvoiceEmail({
     dueDate,
     invoiceUrl,
     businessName,
+    replyTo,
     branding,
 }) {
     const brand = branding || buildClientEmailBranding(null, businessName);
@@ -35,6 +37,7 @@ export async function sendInvoiceEmail({
     return sendEmail({
         to,
         from: getClientEmailFromAddress(brand.businessName),
+        replyTo,
         subject: `Invoice ${invoiceNumber} from ${brand.businessName}`,
         type: 'invoice',
         react: React.createElement(InvoiceEmail, {

@@ -28,6 +28,7 @@ export async function sendPaymentConfirmationEmail({
     paymentDate,
     paymentMethod,
     businessName,
+    replyTo,
     receiptUrl,
     branding,
 }) {
@@ -36,6 +37,7 @@ export async function sendPaymentConfirmationEmail({
     return sendEmail({
         to,
         from: getClientEmailFromAddress(brand.businessName),
+        replyTo,
         subject: `Payment confirmed — Invoice ${invoiceNumber}`,
         type: 'payment-confirmation',
         react: React.createElement(PaymentConfirmationEmail, {

@@ -13,6 +13,7 @@ export async function sendQuotationEmail({
     validUntil,
     quotationUrl,
     businessName,
+    replyTo,
     branding,
 }) {
     const brand = branding || buildClientEmailBranding(null, businessName);
@@ -21,6 +22,7 @@ export async function sendQuotationEmail({
     return sendEmail({
         to,
         from: getClientEmailFromAddress(brand.businessName),
+        replyTo,
         subject: `Quotation ${quotationNumber} from ${brand.businessName}`,
         type: 'quotation',
         react: React.createElement(QuotationEmail, {

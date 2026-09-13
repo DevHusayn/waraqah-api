@@ -44,6 +44,7 @@ export async function dispatchReceiptEmailToClient({
         paymentDate: receipt.datePaid || new Date(),
         paymentMethod: formatPaymentMethod(receipt.paymentMethod),
         businessName: ctx.businessName,
+        replyTo: ctx.replyTo,
         branding: ctx.branding,
         receiptUrl: buildReceiptUrl(receipt),
     });

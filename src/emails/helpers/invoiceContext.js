@@ -1,7 +1,7 @@
 import Client from '../../../models/Client.js';
 import BusinessInfo from '../../../models/CompanyInfo.js';
 import { ensureInvoicePublicToken } from '../../../utils/invoicePublicToken.js';
-import { buildClientEmailBranding } from './clientEmailBranding.js';
+import { buildClientEmailBranding, resolveClientReplyTo } from './clientEmailBranding.js';
 
 export function getFrontendBaseUrl() {
     return (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
@@ -69,6 +69,7 @@ export async function loadInvoiceEmailContext(invoice, userId) {
         businessInfo,
         businessName,
         branding,
+        replyTo: resolveClientReplyTo(businessInfo),
         to: client.email.trim().toLowerCase(),
         customerName: client.name || client.company || 'Customer',
     };

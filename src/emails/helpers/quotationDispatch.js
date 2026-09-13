@@ -62,6 +62,7 @@ export async function dispatchQuotationEmailToClient({
         validUntil: quotation.validUntil,
         quotationUrl,
         businessName: ctx.businessName,
+        replyTo: ctx.replyTo,
         branding: ctx.branding,
     });
 

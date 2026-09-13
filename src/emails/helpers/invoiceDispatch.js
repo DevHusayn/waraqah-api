@@ -54,6 +54,7 @@ export async function dispatchInvoiceEmailToClient({
         dueDate: invoice.dueDate,
         invoiceUrl: buildInvoiceUrl(invoice),
         businessName: ctx.businessName,
+        replyTo: ctx.replyTo,
         branding: ctx.branding,
     });
 
@@ -111,6 +112,7 @@ export async function dispatchOverdueInvoiceEmails({ invoice, userId }) {
             daysUntilDue,
             invoiceUrl: buildInvoiceUrl(invoice),
             businessName: ctx.businessName,
+            replyTo: ctx.replyTo,
             branding: ctx.branding,
         });
 
@@ -149,6 +151,7 @@ export async function dispatchPaidInvoiceEmails(invoice, userId) {
             paymentDate: invoice.datePaid || new Date(),
             paymentMethod: formatPaymentMethod(invoice.paymentMethod),
             businessName: ctx.businessName,
+            replyTo: ctx.replyTo,
             branding: ctx.branding,
             receiptUrl,
         });
@@ -194,6 +197,7 @@ export async function dispatchPartialPaymentEmails(invoice, userId, payment) {
                 dueDate: invoice.dueDate,
                 invoiceUrl: buildInvoiceUrl(invoice),
                 businessName: ctx.businessName,
+                replyTo: ctx.replyTo,
                 branding: ctx.branding,
             });
         } catch (err) {
@@ -234,6 +238,7 @@ export async function dispatchCancelledInvoiceEmails({ invoice, userId }) {
                 amount: invoice.total,
                 currency: invoice.currency || 'NGN',
                 businessName: ctx.businessName,
+                replyTo: ctx.replyTo,
                 branding: ctx.branding,
             });
         }

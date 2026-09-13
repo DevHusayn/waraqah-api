@@ -37,6 +37,21 @@ export function getEmailFromAddress() {
     return process.env.EMAIL_FROM?.trim() || 'Waraqah <no_reply@mail.mywaraqah.com>';
 }
 
+function extractEmailAddress(value) {
+    const trimmed = String(value || '').trim();
+    const match = trimmed.match(/<([^>]+)>/);
+    return (match ? match[1] : trimmed).trim();
+}
+
+/** Verified From mailbox for client-facing documents (invoices, reminders, receipts). */
+export function getClientFromEmail() {
+    const explicit = process.env.EMAIL_CLIENT_FROM?.trim();
+    if (explicit) {
+        return toVerifiedFromEmail(extractEmailAddress(explicit));
+    }
+    return 'invoices@mail.mywaraqah.com';
+}
+
 /** Owner alerts and platform notifications (invoice paid, low stock, etc.). */
 export function getNotificationFromAddress() {
     return process.env.EMAIL_NOTIFICATIONS_FROM?.trim() || 'Waraqah <notifications@mail.mywaraqah.com>';

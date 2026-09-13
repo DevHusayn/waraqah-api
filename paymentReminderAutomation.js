@@ -83,6 +83,7 @@ async function sendDuePaymentReminders() {
                     daysUntilDue,
                     invoiceUrl: buildInvoiceUrl(invoice),
                     businessName: ctx.businessName,
+                    replyTo: ctx.replyTo,
                     branding: ctx.branding,
                 });
 

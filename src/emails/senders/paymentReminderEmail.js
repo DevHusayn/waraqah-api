@@ -17,6 +17,7 @@ import { buildClientEmailBranding, getClientEmailFromAddress } from '../helpers/
  * @param {number} params.daysUntilDue - Days until due (negative if overdue)
  * @param {string} params.invoiceUrl - Invoice/payment URL
  * @param {string} params.businessName - Sender business name
+ * @param {string} [params.replyTo] - Merchant reply address
  * @param {object} [params.branding] - Business branding tokens
  */
 export async function sendPaymentReminderEmail({
@@ -29,6 +30,7 @@ export async function sendPaymentReminderEmail({
     daysUntilDue,
     invoiceUrl,
     businessName,
+    replyTo,
     branding,
 }) {
     const brand = branding || buildClientEmailBranding(null, businessName);
@@ -37,6 +39,7 @@ export async function sendPaymentReminderEmail({
     return sendEmail({
         to,
         from: getClientEmailFromAddress(brand.businessName),
+        replyTo,
         subject: `Payment reminder — Invoice ${invoiceNumber}`,
         type: 'payment-reminder',
         react: React.createElement(PaymentReminderEmail, {

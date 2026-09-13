@@ -1,7 +1,7 @@
 import Client from '../../../models/Client.js';
 import BusinessInfo from '../../../models/CompanyInfo.js';
 import { ensureQuotationPublicToken } from '../../../utils/quotationPublicToken.js';
-import { buildClientEmailBranding } from './clientEmailBranding.js';
+import { buildClientEmailBranding, resolveClientReplyTo } from './clientEmailBranding.js';
 import { getFrontendBaseUrl } from './invoiceContext.js';
 
 /**
@@ -56,6 +56,7 @@ export async function loadQuotationEmailContext(quotation, userId) {
         businessInfo,
         businessName,
         branding,
+        replyTo: resolveClientReplyTo(businessInfo),
         to: client.email.trim().toLowerCase(),
         customerName: client.name || client.company || 'Customer',
     };

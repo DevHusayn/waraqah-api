@@ -32,6 +32,7 @@ export async function sendReceiptEmail({
     paymentDate,
     paymentMethod,
     businessName,
+    replyTo,
     receiptUrl,
     branding,
 }) {
@@ -45,6 +46,7 @@ export async function sendReceiptEmail({
     return sendEmail({
         to,
         from: getClientEmailFromAddress(brand.businessName),
+        replyTo,
         subject: `Receipt ${receiptNumber} from ${brand.businessName}`,
         type: 'receipt',
         react: React.createElement(ReceiptEmail, {

@@ -10,6 +10,7 @@ export async function sendInvoiceCancelledClientEmail(props) {
     return sendEmail({
         to: props.to,
         from: getClientEmailFromAddress(brand.businessName),
+        replyTo: props.replyTo,
         subject: `Invoice ${props.invoiceNumber} cancelled — ${brand.businessName}`,
         type: 'invoice-cancelled-client',
         react: React.createElement(InvoiceCancelledClientEmail, {

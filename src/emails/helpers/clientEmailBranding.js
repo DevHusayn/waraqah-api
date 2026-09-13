@@ -1,4 +1,4 @@
-import { BRAND, getApiBaseUrl, getEmailFromAddress } from '../config.js';
+import { BRAND, getApiBaseUrl, getClientFromEmail } from '../config.js';
 import { sanitizeHexColor } from '../../../utils/sanitize.js';
 import { isPremiumActive } from '../../../utils/businessInfoHelpers.js';
 
@@ -97,15 +97,22 @@ export function buildClientEmailBranding(businessInfo, businessName, options = {
 }
 
 /**
- * Use the business name as the visible sender while keeping the verified domain address.
+ * Use the business name as the visible sender while keeping the verified invoices mailbox.
  */
 export function getClientEmailFromAddress(businessName) {
-    const defaultFrom = getEmailFromAddress();
-    const match = defaultFrom.match(/<([^>]+)>/);
-    const emailAddress = match ? match[1] : defaultFrom.trim();
+    const emailAddress = getClientFromEmail();
     const displayName = businessName?.trim() || BRAND.name;
     const safeName = displayName.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     return `"${safeName}" <${emailAddress}>`;
+}
+
+const REPLY_TO_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Merchant inbox for client replies. Invalid or empty values are omitted. */
+export function resolveClientReplyTo(businessInfo) {
+    const raw = String(businessInfo?.email || '').trim().toLowerCase();
+    if (!raw || !REPLY_TO_PATTERN.test(raw)) return undefined;
+    return raw;
 }
 
 export function parseDataUrlImage(dataUrl) {

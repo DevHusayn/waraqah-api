@@ -583,6 +583,7 @@ router.post('/:id/send-reminder', auth, requireEmailVerified, validateObjectId()
             daysUntilDue,
             invoiceUrl: buildInvoiceUrl(invoice),
             businessName: ctx.businessName,
+            replyTo: ctx.replyTo,
             branding: ctx.branding,
         });
 
@@ -640,6 +641,7 @@ router.post('/:id/send-receipt', auth, requireEmailVerified, validateObjectId(),
             paymentDate: invoice.datePaid || new Date(),
             paymentMethod: formatPaymentMethod(invoice.paymentMethod),
             businessName: ctx.businessName,
+            replyTo: ctx.replyTo,
             branding: ctx.branding,
             receiptUrl: buildReceiptUrl(invoice),
         });

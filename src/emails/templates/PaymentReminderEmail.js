@@ -39,7 +39,7 @@ export default function PaymentReminderEmail({
     return React.createElement(
         ClientEmailLayout,
         {
-            preview: `Reminder: invoice ${invoiceNumber} — ${formatCurrency(amountOutstanding, currency)} outstanding, due ${formatDate(dueDate)}.`,
+            preview: `Reminder from ${brand.businessName}: invoice ${invoiceNumber} — ${formatCurrency(amountOutstanding, currency)} outstanding, due ${formatDate(dueDate)}.`,
             branding: brand,
         },
         React.createElement(Text, { style: emailStyles.heading }, 'Payment reminder'),

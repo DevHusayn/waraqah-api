@@ -20,6 +20,7 @@ export async function sendPartialPaymentEmail({
     dueDate,
     invoiceUrl,
     businessName,
+    replyTo,
     branding,
 }) {
     const brand = branding || buildClientEmailBranding(null, businessName);
@@ -27,6 +28,7 @@ export async function sendPartialPaymentEmail({
     return sendEmail({
         to,
         from: getClientEmailFromAddress(brand.businessName),
+        replyTo,
         subject: `Partial payment received — Invoice ${invoiceNumber}`,
         type: 'partial-payment',
         react: React.createElement(PartialPaymentEmail, {
