@@ -15,6 +15,8 @@ import { getListPeriodMongoFilter } from '../utils/listMonthFilter.js';
 import { sendClientListExport } from '../utils/clientListExport.js';
 import { getClientActivity } from '../utils/clientActivity.js';
 import { CATALOG_LIST_SORT, resolveListSort } from '../utils/listSort.js';
+import { getTopBuyingClientsForUser } from '../utils/salesRankings.js';
+import { getBusinessTimezone, resolveAnalyticsPeriod } from '../utils/timezone.js';
 
 const router = express.Router();
 
@@ -74,6 +76,14 @@ router.post('/', auth, asyncHandler(async (req, res) => {
     const payload = sanitizeClientPayload(req.body);
     const client = await Client.create({ ...payload, userId: req.user.userId });
     res.status(201).json(client);
+}));
+
+router.get('/top-buyers', auth, asyncHandler(async (req, res) => {
+    const userId = req.user.userId;
+    const timeZone = await getBusinessTimezone(userId);
+    const period = resolveAnalyticsPeriod(req.query, timeZone);
+    const result = await getTopBuyingClientsForUser(userId, { period, timeZone });
+    res.json(result);
 }));
 
 router.get('/:id/activity', auth, validateObjectId(), asyncHandler(async (req, res) => {

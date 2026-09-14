@@ -1,11 +1,8 @@
 import User from '../models/User.js';
-import Invoice from '../models/Invoice.js';
-import Quotation from '../models/Quotation.js';
 import Payment from '../models/Payment.js';
 import UserActivityLog from '../models/UserActivityLog.js';
 import { buildPaginationMeta } from './pagination.js';
 
-const DOCUMENT_CAP = 100;
 const LOG_CAP = 200;
 const PAYMENT_CAP = 100;
 
@@ -20,8 +17,6 @@ const TYPE_LABELS = {
     subscription_payment_failed: 'Payment failed',
     payment_success: 'Payment successful',
     payment_failed: 'Payment failed',
-    invoice_created: 'Invoice created',
-    quotation_created: 'Quotation created',
     admin_email_sent: 'Email sent by admin',
 };
 
@@ -61,18 +56,8 @@ export async function buildUserTimeline(userId, { page, limit, skip }) {
     const user = await User.findById(userId).select('createdAt email').lean();
     if (!user) return null;
 
-    const [logs, invoices, quotations, payments] = await Promise.all([
+    const [logs, payments] = await Promise.all([
         UserActivityLog.find({ userId }).sort({ createdAt: -1 }).limit(LOG_CAP).lean(),
-        Invoice.find({ userId, status: { $ne: 'draft' } })
-            .sort({ createdAt: -1 })
-            .limit(DOCUMENT_CAP)
-            .select('invoiceNumber createdAt')
-            .lean(),
-        Quotation.find({ userId, status: { $ne: 'draft' } })
-            .sort({ createdAt: -1 })
-            .limit(DOCUMENT_CAP)
-            .select('quotationNumber createdAt')
-            .lean(),
         Payment.find({ userId }).sort({ createdAt: -1 }).limit(PAYMENT_CAP).lean(),
     ]);
 
@@ -86,22 +71,6 @@ export async function buildUserTimeline(userId, { page, limit, skip }) {
             meta: null,
         },
         ...logs.map(formatLogEvent),
-        ...invoices.map((inv) => ({
-            id: `invoice-${inv._id}`,
-            type: 'invoice_created',
-            at: inv.createdAt,
-            title: TYPE_LABELS.invoice_created,
-            description: inv.invoiceNumber ? `Invoice ${inv.invoiceNumber}` : 'New invoice',
-            meta: { invoiceId: String(inv._id), number: inv.invoiceNumber },
-        })),
-        ...quotations.map((q) => ({
-            id: `quotation-${q._id}`,
-            type: 'quotation_created',
-            at: q.createdAt,
-            title: TYPE_LABELS.quotation_created,
-            description: q.quotationNumber ? `Quotation ${q.quotationNumber}` : 'New quotation',
-            meta: { quotationId: String(q._id), number: q.quotationNumber },
-        })),
         ...payments
             .filter((p) => p.status === 'success' || p.status === 'failed')
             .map(formatPaymentEvent),

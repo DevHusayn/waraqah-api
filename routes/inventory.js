@@ -8,12 +8,22 @@ import {
     listInventoryStock,
     listInventoryMovements,
 } from '../utils/inventoryList.js';
+import { getTopSellingProductsForUser } from '../utils/salesRankings.js';
+import { getBusinessTimezone, resolveAnalyticsPeriod } from '../utils/timezone.js';
 
 const router = express.Router();
 
 router.get('/summary', auth, asyncHandler(async (req, res) => {
     const summary = await getInventorySummary(req.user.userId);
     res.json(summary);
+}));
+
+router.get('/top-products', auth, asyncHandler(async (req, res) => {
+    const userId = req.user.userId;
+    const timeZone = await getBusinessTimezone(userId);
+    const period = resolveAnalyticsPeriod(req.query, timeZone);
+    const result = await getTopSellingProductsForUser(userId, { period, timeZone });
+    res.json(result);
 }));
 
 router.get('/stock', auth, asyncHandler(async (req, res) => {
