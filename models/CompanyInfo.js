@@ -39,7 +39,7 @@ const businessInfoSchema = new mongoose.Schema({
     autoEmailInvoices: { type: Boolean, default: false },
     /** Email payment reminders automatically for due soon / overdue invoices. */
     autoPaymentReminders: { type: Boolean, default: true },
-    /** Email owner a daily digest when tracked products fall at or below their low-stock threshold. */
+    /** Email owner a daily digest when tracked products are low on stock or out of stock. */
     lowStockEmailAlerts: { type: Boolean, default: false },
     /** Allow issuing documents that would push tracked stock below zero. Default off. */
     allowOverselling: { type: Boolean, default: false },

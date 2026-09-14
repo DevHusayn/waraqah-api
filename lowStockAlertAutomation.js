@@ -2,7 +2,10 @@ import BusinessInfo from './models/CompanyInfo.js';
 import User from './models/User.js';
 import { sendLowStockAlertEmail } from './src/emails/senders/lowStockAlertEmail.js';
 import { getWebsiteUrl } from './src/emails/config.js';
-import { findLowStockProductsForUser } from './utils/lowStockProducts.js';
+import {
+    findLowStockProductsForUser,
+    findOutOfStockProductsForUser,
+} from './utils/lowStockProducts.js';
 
 const DIGEST_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const BATCH_SIZE = 50;
@@ -16,7 +19,9 @@ function mapProductsForEmail(products) {
     return products.map((product) => ({
         name: product.name,
         quantityOnHand: Number(product.quantityOnHand ?? 0),
-        lowStockThreshold: Number(product.lowStockThreshold ?? 0),
+        lowStockThreshold: product.lowStockThreshold == null
+            ? null
+            : Number(product.lowStockThreshold),
     }));
 }
 
@@ -58,8 +63,11 @@ async function sendLowStockDigests() {
                 continue;
             }
 
-            const lowStockProducts = await findLowStockProductsForUser(info.userId);
-            if (lowStockProducts.length === 0) {
+            const [lowStockProducts, outOfStockProducts] = await Promise.all([
+                findLowStockProductsForUser(info.userId),
+                findOutOfStockProductsForUser(info.userId),
+            ]);
+            if (lowStockProducts.length === 0 && outOfStockProducts.length === 0) {
                 skipped += 1;
                 continue;
             }
@@ -69,6 +77,7 @@ async function sendLowStockDigests() {
                     to: user.email.trim().toLowerCase(),
                     ownerName: user.name?.trim() || info.name?.trim() || 'there',
                     products: mapProductsForEmail(lowStockProducts),
+                    outOfStockProducts: mapProductsForEmail(outOfStockProducts),
                     productsUrl,
                 });
 

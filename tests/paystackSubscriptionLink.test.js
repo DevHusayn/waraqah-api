@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
     needsSubscriptionLink,
     pickLatestActiveSubscription,
+    subscriptionCustomerEmail,
     subscriptionMetaFromCharge,
 } from '../services/paystackSubscriptionLink.js';
 
@@ -54,6 +55,13 @@ test('pickLatestActiveSubscription prefers the matching billing interval', () =>
     );
 
     assert.equal(match?.subscription_code, 'SUB_MONTHLY');
+});
+
+test('subscriptionCustomerEmail reads the Paystack customer email', () => {
+    assert.equal(
+        subscriptionCustomerEmail({ customer: { email: 'Mubarak@Gmail.com' } }),
+        'mubarak@gmail.com',
+    );
 });
 
 test('needsSubscriptionLink is true when subscription code or status is missing', () => {

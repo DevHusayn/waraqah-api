@@ -19,7 +19,13 @@ import {
     normalizeBillingInterval,
 } from '../services/paystack.js';
 import { getOrCreatePremiumPlanCode } from '../services/paystackPlan.js';
-import { activatePremiumForUser, deactivatePremiumSubscription, linkPaystackSubscription } from '../services/premiumActivation.js';
+import {
+    activatePremiumForUser,
+    deactivatePremiumSubscription,
+    linkPaystackSubscription,
+    nextPaymentDateFromSubscription,
+    reconcilePremiumUntilForUser,
+} from '../services/premiumActivation.js';
 import {
     ensurePaystackSubscriptionLinked,
     needsSubscriptionLink,
@@ -122,6 +128,7 @@ async function fulfillPremiumPayment(payment, paystackData, { resolveSubscriptio
             billingInterval,
             subscription: subMeta.subscriptionCode ? subMeta : null,
             fromPayment: true,
+            premiumUntil: subMeta.nextPaymentDate || null,
         });
     } else if (subMeta.subscriptionCode && needsSubscriptionLink(info)) {
         info = await linkPaystackSubscription(payment.userId, {
@@ -192,10 +199,21 @@ async function renewBySubscriptionCode(subscriptionCode, paystackData) {
     const months = monthsForInterval(billingInterval);
     const subMeta = subscriptionMetaFromCharge(paystackData);
 
+    let nextUntil = subMeta.nextPaymentDate;
+    if (!nextUntil) {
+        try {
+            const sub = await fetchSubscription(subscriptionCode);
+            nextUntil = nextPaymentDateFromSubscription(sub);
+        } catch (err) {
+            console.error('[Paystack] fetchSubscription during renewal failed:', err.message);
+        }
+    }
+
     await activatePremiumForUser(info.userId, {
         months,
         billingInterval,
-        subscription: { ...subMeta, subscriptionCode },
+        subscription: { ...subMeta, subscriptionCode, nextPaymentDate: nextUntil },
+        premiumUntil: nextUntil,
     });
     await recordSubscriptionCharge(info.userId, paystackData, billingInterval);
     return info;
@@ -259,7 +277,8 @@ async function resolvePaymentFromCharge(data) {
 /** Public pricing info + subscription status (used by upgrade flow) */
 router.get('/plan', auth, paymentVerificationLimiter, async (req, res) => {
     try {
-        const info = await BusinessInfo.findOne({ userId: req.user.userId });
+        const info = await reconcilePremiumUntilForUser(req.user.userId)
+            || await BusinessInfo.findOne({ userId: req.user.userId });
         const secretKey = process.env.PAYSTACK_SECRET_KEY || '';
 
         res.json({
@@ -608,15 +627,31 @@ export async function paystackWebhookHandler(req, res) {
             const months = monthsForInterval(billingInterval);
 
             if (userId && subCode) {
-                await activatePremiumForUser(userId, {
-                    months,
-                    billingInterval,
-                    subscription: {
-                        subscriptionCode: subCode,
-                        customerCode: data.customer?.customer_code || '',
-                        emailToken: data.email_token || '',
-                    },
-                });
+                const existing = await BusinessInfo.findOne({ userId });
+                const nextPaymentDate = nextPaymentDateFromSubscription(data);
+                if (isPremiumActive(existing)) {
+                    await linkPaystackSubscription(userId, {
+                        subscription: {
+                            subscriptionCode: subCode,
+                            customerCode: data.customer?.customer_code || '',
+                            emailToken: data.email_token || '',
+                            nextPaymentDate,
+                        },
+                        billingInterval,
+                    });
+                } else {
+                    await activatePremiumForUser(userId, {
+                        months,
+                        billingInterval,
+                        subscription: {
+                            subscriptionCode: subCode,
+                            customerCode: data.customer?.customer_code || '',
+                            emailToken: data.email_token || '',
+                            nextPaymentDate,
+                        },
+                        premiumUntil: nextPaymentDate,
+                    });
+                }
                 await Payment.updateMany(
                     { userId, type: 'subscription', paystackSubscriptionCode: { $in: ['', null] } },
                     { $set: { paystackSubscriptionCode: subCode } },

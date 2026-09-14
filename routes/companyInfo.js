@@ -15,11 +15,15 @@ import {
 import { isProduction } from '../utils/envValidation.js';
 import { optimizeBusinessAsset } from '../utils/imageOptimize.js';
 import { invalidateDashboardCache } from '../utils/dashboardStats.js';
+import { reconcilePremiumUntilForUser } from '../services/premiumActivation.js';
 
 const router = express.Router();
 
 async function getOrCreateBusinessInfo(userId) {
-    let info = await BusinessInfo.findOne({ userId });
+    let info = await reconcilePremiumUntilForUser(userId);
+    if (!info) {
+        info = await BusinessInfo.findOne({ userId });
+    }
     if (!info) {
         info = await BusinessInfo.create({ userId, ...defaultBusinessInfoFields });
     }

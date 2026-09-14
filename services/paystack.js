@@ -78,12 +78,24 @@ export async function fetchCustomer(emailOrCode) {
     });
 }
 
-export async function listSubscriptions({ customer, plan } = {}) {
+export async function listSubscriptions({ customer, plan, page = 1, perPage = 50 } = {}) {
     const params = new URLSearchParams();
     if (customer) params.set('customer', customer);
     if (plan) params.set('plan', plan);
-    const query = params.toString();
-    return paystackRequest(`/subscription${query ? `?${query}` : ''}`, {
+    params.set('page', String(page));
+    params.set('perPage', String(perPage));
+    return paystackRequest(`/subscription?${params.toString()}`, {
+        method: 'GET',
+    });
+}
+
+export async function listTransactions({ customer, status, page = 1, perPage = 20 } = {}) {
+    const params = new URLSearchParams();
+    if (customer) params.set('customer', customer);
+    if (status) params.set('status', status);
+    params.set('page', String(page));
+    params.set('perPage', String(perPage));
+    return paystackRequest(`/transaction?${params.toString()}`, {
         method: 'GET',
     });
 }

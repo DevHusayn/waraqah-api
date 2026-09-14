@@ -1,14 +1,23 @@
 import User from '../models/User.js';
 import Payment from '../models/Payment.js';
 import BusinessInfo from '../models/CompanyInfo.js';
-import { activatePremiumForUser, isPremiumActive, linkPaystackSubscription } from './premiumActivation.js';
+import {
+    activatePremiumForUser,
+    applyPaystackNextPaymentDate,
+    isPremiumActive,
+    linkPaystackSubscription,
+    nextPaymentDateFromSubscription,
+    reconcilePremiumUntilForUser,
+} from './premiumActivation.js';
 import {
     fetchCustomer,
     fetchSubscription,
     listSubscriptions,
+    listTransactions,
     normalizeBillingInterval,
     getBillingConfig,
     verifyTransaction,
+    PREMIUM_AMOUNT_KOBO,
 } from './paystack.js';
 
 function monthsForInterval(interval) {
@@ -22,6 +31,7 @@ export function subscriptionMetaFromCharge(data) {
             subscriptionCode: '',
             customerCode: '',
             emailToken: '',
+            nextPaymentDate: null,
         };
     }
 
@@ -33,6 +43,7 @@ export function subscriptionMetaFromCharge(data) {
         subscriptionCode: String(subscriptionCode || '').trim(),
         customerCode: String(customer.customer_code || customer.id || '').trim(),
         emailToken: String(data.subscription?.email_token || data.email_token || '').trim(),
+        nextPaymentDate: nextPaymentDateFromSubscription(typeof sub === 'object' ? sub : data),
     };
 }
 
@@ -86,17 +97,105 @@ async function findSubscriptionCodeForCustomer(customerCode, billingInterval) {
     }
 }
 
+export function subscriptionCustomerEmail(sub) {
+    return String(sub?.customer?.email || '').trim().toLowerCase();
+}
+
+async function findSubscriptionByEmailScan(email, billingInterval) {
+    const wanted = email.trim().toLowerCase();
+    if (!wanted) return null;
+
+    for (let page = 1; page <= 10; page += 1) {
+        const listed = await listSubscriptions({ page, perPage: 50 });
+        const rows = normalizeSubscriptionList(listed);
+        const forEmail = rows.filter((sub) => subscriptionCustomerEmail(sub) === wanted);
+        const match = pickLatestActiveSubscription(forEmail, billingInterval)
+            || pickLatestActiveSubscription(forEmail);
+        if (match) return match;
+        if (rows.length < 50) break;
+    }
+    return null;
+}
+
 async function findSubscriptionCodeForEmail(email, billingInterval) {
     if (!email) return '';
+    const normalized = email.trim().toLowerCase();
 
     try {
-        const customer = await fetchCustomer(email.trim().toLowerCase());
+        const customer = await fetchCustomer(normalized);
         const customerCode = customer?.customer_code || customer?.id || '';
-        return findSubscriptionCodeForCustomer(customerCode, billingInterval);
+        const fromCustomer = await findSubscriptionCodeForCustomer(customerCode, billingInterval);
+        if (fromCustomer) return fromCustomer;
+    } catch {
+        /* Email lookup often 404s; scan subscriptions next. */
+    }
+
+    try {
+        const match = await findSubscriptionByEmailScan(normalized, billingInterval);
+        return match?.subscription_code || match?.code || '';
     } catch (err) {
-        console.error('[Paystack] fetchCustomer failed:', err.message);
+        console.error('[Paystack] subscription email scan failed:', err.message);
         return '';
     }
+}
+
+async function backfillPaymentFromSubscription(userId, subscription, billingInterval) {
+    const subCode = subscription?.subscriptionCode;
+    if (!userId || !subCode) return null;
+
+    const existing = await Payment.findOne({
+        userId,
+        $or: [
+            { paystackSubscriptionCode: subCode },
+            { type: 'subscription', status: 'success' },
+        ],
+    }).sort({ paidAt: -1, createdAt: -1 });
+    if (existing) {
+        if (!existing.paystackSubscriptionCode) {
+            existing.paystackSubscriptionCode = subCode;
+            await existing.save();
+        }
+        return existing;
+    }
+
+    let tx = null;
+    if (subscription.customerCode) {
+        try {
+            const listed = await listTransactions({
+                customer: subscription.customerCode,
+                status: 'success',
+                perPage: 20,
+            });
+            const rows = normalizeSubscriptionList(listed);
+            tx = rows.find((row) => String(row?.status || '').toLowerCase() === 'success') || rows[0];
+        } catch (err) {
+            console.error('[Paystack] listTransactions failed:', err.message);
+        }
+    }
+
+    if (!tx?.reference) return null;
+
+    const already = await Payment.findOne({ reference: tx.reference });
+    if (already) {
+        already.userId = already.userId || userId;
+        already.paystackSubscriptionCode = already.paystackSubscriptionCode || subCode;
+        already.status = 'success';
+        await already.save();
+        return already;
+    }
+
+    return Payment.create({
+        userId,
+        reference: tx.reference,
+        amount: tx.amount || PREMIUM_AMOUNT_KOBO,
+        currency: (tx.currency || 'NGN').toUpperCase(),
+        status: 'success',
+        type: 'subscription',
+        billingInterval,
+        channel: tx.channel || '',
+        paidAt: tx.paid_at ? new Date(tx.paid_at) : new Date(),
+        paystackSubscriptionCode: subCode,
+    });
 }
 
 async function resolveSubscriptionCode({ userId, payment, paystackData, billingInterval }) {
@@ -141,11 +240,13 @@ async function resolveSubscriptionCode({ userId, payment, paystackData, billingI
 async function buildSubscriptionPayload(subscriptionCode, partialMeta = {}) {
     let customerCode = partialMeta.customerCode || '';
     let emailToken = partialMeta.emailToken || '';
+    let nextPaymentDate = partialMeta.nextPaymentDate || null;
 
     try {
         const sub = await fetchSubscription(subscriptionCode);
         customerCode = sub?.customer?.customer_code || customerCode;
         emailToken = sub?.email_token || emailToken;
+        nextPaymentDate = nextPaymentDateFromSubscription(sub) || nextPaymentDate;
     } catch (err) {
         console.error('[Paystack] fetchSubscription failed:', err.message);
     }
@@ -154,6 +255,7 @@ async function buildSubscriptionPayload(subscriptionCode, partialMeta = {}) {
         subscriptionCode,
         customerCode,
         emailToken,
+        nextPaymentDate,
     };
 }
 
@@ -162,9 +264,12 @@ async function buildSubscriptionPayload(subscriptionCode, partialMeta = {}) {
  * Safe to call multiple times (verify retries, webhooks, repair).
  */
 export async function ensurePaystackSubscriptionLinked({ userId, payment = null, paystackData = null }) {
-    const info = await BusinessInfo.findOne({ userId });
+    let info = await reconcilePremiumUntilForUser(userId);
+    if (!info) {
+        info = await BusinessInfo.findOne({ userId });
+    }
     if (!needsSubscriptionLink(info)) {
-        return info;
+        return applyPaystackNextPaymentDate(info);
     }
 
     const billingInterval = normalizeBillingInterval(
@@ -183,14 +288,6 @@ export async function ensurePaystackSubscriptionLinked({ userId, payment = null,
     });
 
     if (!meta.subscriptionCode) {
-        if (payment?.status === 'success') {
-            return activatePremiumForUser(userId, {
-                months,
-                billingInterval,
-                subscription: null,
-                fromPayment: true,
-            });
-        }
         return info;
     }
 
@@ -204,17 +301,20 @@ export async function ensurePaystackSubscriptionLinked({ userId, payment = null,
             payment.paidAt = payment.paidAt || new Date();
         }
         await payment.save();
+    } else {
+        await backfillPaymentFromSubscription(userId, subscription, billingInterval);
     }
 
-    if (isPremiumActive(info)) {
-        return linkPaystackSubscription(userId, { subscription, billingInterval });
-    }
+    const linked = isPremiumActive(info)
+        ? await linkPaystackSubscription(userId, { subscription, billingInterval })
+        : await activatePremiumForUser(userId, {
+            months,
+            billingInterval,
+            subscription,
+            premiumUntil: subscription.nextPaymentDate,
+        });
 
-    return activatePremiumForUser(userId, {
-        months,
-        billingInterval,
-        subscription,
-    });
+    return applyPaystackNextPaymentDate(linked);
 }
 
 /** Resolve userId for subscription.create when metadata is missing. */
