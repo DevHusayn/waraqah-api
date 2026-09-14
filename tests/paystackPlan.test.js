@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { pickMatchingPlanCode } from '../services/paystackPlan.js';
+import { pickMatchingPlanCode, requirePinnedPlanCode } from '../services/paystackPlan.js';
 
 const monthlyConfig = {
     name: 'Waraqah Premium Monthly',
@@ -58,6 +58,32 @@ test('pickMatchingPlanCode ignores plans with different amount or interval', () 
     );
 
     assert.equal(code, null);
+});
+
+test('production refuses to create a Paystack plan when env codes are missing', () => {
+    const savedNodeEnv = process.env.NODE_ENV;
+    const savedMonthly = process.env.PAYSTACK_PLAN_CODE;
+    const savedYearly = process.env.PAYSTACK_PLAN_CODE_YEARLY;
+    const savedVercel = process.env.VERCEL;
+    process.env.NODE_ENV = 'production';
+    delete process.env.VERCEL;
+    delete process.env.PAYSTACK_PLAN_CODE;
+    delete process.env.PAYSTACK_PLAN_CODE_YEARLY;
+
+    try {
+        assert.throws(
+            () => requirePinnedPlanCode('monthly'),
+            /PAYSTACK_PLAN_CODE/,
+        );
+    } finally {
+        process.env.NODE_ENV = savedNodeEnv;
+        if (savedMonthly == null) delete process.env.PAYSTACK_PLAN_CODE;
+        else process.env.PAYSTACK_PLAN_CODE = savedMonthly;
+        if (savedYearly == null) delete process.env.PAYSTACK_PLAN_CODE_YEARLY;
+        else process.env.PAYSTACK_PLAN_CODE_YEARLY = savedYearly;
+        if (savedVercel == null) delete process.env.VERCEL;
+        else process.env.VERCEL = savedVercel;
+    }
 });
 
 test('pickMatchingPlanCode accepts paginated Paystack responses', () => {

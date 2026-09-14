@@ -85,6 +85,7 @@ import {
 } from '../utils/adminUserExport.js';
 import { adminDisplayName } from '../utils/adminDisplayName.js';
 import { isProtectedAdminUser } from '../utils/protectedAdmin.js';
+import { disablePaystackSubscriptionForInfo } from '../services/paystack.js';
 import {
     logUserLogin,
     logUserSuspended,
@@ -211,12 +212,15 @@ router.delete('/admin/users/:id', auth, requireAdmin, validateObjectId(), async 
         if (isProtectedAdminUser(existing)) {
             return res.status(403).json({ message: 'This account is protected and cannot be deleted.' });
         }
+        const info = await BusinessInfo.findOne({ userId: req.params.id });
+        await disablePaystackSubscriptionForInfo(info);
+
         const user = await User.findByIdAndDelete(req.params.id);
         if (!user) return res.status(404).json({ message: 'User not found' });
-        // Optionally, delete related business info, invoices, clients
         await BusinessInfo.deleteOne({ userId: req.params.id });
         await Invoice.deleteMany({ userId: req.params.id });
         await Client.deleteMany({ userId: req.params.id });
+        await Payment.deleteMany({ userId: req.params.id });
         res.json({ message: 'User deleted' });
     } catch (err) {
         return sendServerError(res, err);

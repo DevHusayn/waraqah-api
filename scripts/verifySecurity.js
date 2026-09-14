@@ -3,6 +3,7 @@ import { sanitizeInvoicePayload } from '../utils/invoiceValidation.js';
 import { validateEnv } from '../utils/envValidation.js';
 import { isOriginAllowed } from '../utils/corsConfig.js';
 import crypto from 'crypto';
+import { isValidPaystackSignature } from '../services/paystackVerify.js';
 
 let passed = 0;
 let failed = 0;
@@ -32,8 +33,8 @@ const secret = 'sk_test_verify';
 const body = JSON.stringify({ event: 'charge.success', data: { reference: 'ref' } });
 const sig = crypto.createHmac('sha512', secret).update(body).digest('hex');
 const bad = crypto.createHmac('sha512', 'wrong').update(body).digest('hex');
-assert('webhook signature match', sig === crypto.createHmac('sha512', secret).update(body).digest('hex'));
-assert('webhook signature mismatch detected', sig !== bad);
+assert('webhook signature match', isValidPaystackSignature(body, sig, secret));
+assert('webhook signature mismatch detected', !isValidPaystackSignature(body, bad, secret));
 
 process.env.NODE_ENV = 'production';
 process.env.ALLOW_DEV_PLAN = 'true';

@@ -47,6 +47,23 @@ test('production requires RESEND_API_KEY', () => {
     assert.ok(errors.some((e) => e.includes('RESEND_API_KEY')));
 });
 
+test('production requires pinned Paystack plan codes when Paystack is enabled', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.JWT_SECRET = 'a'.repeat(32);
+    process.env.MONGO_URI = 'mongodb+srv://user:pass@cluster.example.net/waraqah';
+    process.env.FRONTEND_URL = 'https://mywaraqah.com';
+    process.env.ALLOW_DEV_PLAN = 'false';
+    process.env.RESEND_API_KEY = 're_test';
+    process.env.PAYSTACK_SECRET_KEY = 'sk_live_test';
+    delete process.env.PAYSTACK_PLAN_CODE;
+    delete process.env.PAYSTACK_PLAN_CODE_YEARLY;
+
+    const { errors } = validateEnv();
+
+    assert.ok(errors.some((e) => e.includes('PAYSTACK_PLAN_CODE')));
+    assert.ok(errors.some((e) => e.includes('PAYSTACK_PLAN_CODE_YEARLY')));
+});
+
 test('development warns when ALLOW_DEV_PLAN is enabled', () => {
     delete process.env.NODE_ENV;
     delete process.env.VERCEL;

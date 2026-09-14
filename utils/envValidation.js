@@ -26,6 +26,14 @@ export function validateEnv() {
         if (!process.env.RESEND_API_KEY?.trim()) {
             errors.push('RESEND_API_KEY is required in production for transactional email.');
         }
+        if (process.env.PAYSTACK_SECRET_KEY?.trim()) {
+            if (!process.env.PAYSTACK_PLAN_CODE?.trim()) {
+                errors.push('PAYSTACK_PLAN_CODE is required in production when Paystack is enabled.');
+            }
+            if (!process.env.PAYSTACK_PLAN_CODE_YEARLY?.trim()) {
+                errors.push('PAYSTACK_PLAN_CODE_YEARLY is required in production when Paystack is enabled.');
+            }
+        }
     } else if (process.env.ALLOW_DEV_PLAN === 'true') {
         warnings.push('ALLOW_DEV_PLAN is enabled — do not use in production.');
     }

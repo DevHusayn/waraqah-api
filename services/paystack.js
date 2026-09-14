@@ -110,6 +110,29 @@ export async function disableSubscription(subscriptionCode, emailToken) {
     });
 }
 
+/** Best-effort disable. Used on cancel and account delete. */
+export async function disablePaystackSubscriptionForInfo(info) {
+    if (!info?.paystackSubscriptionCode) {
+        return { disabled: false, reason: 'no_subscription' };
+    }
+
+    try {
+        let emailToken = info.paystackEmailToken;
+        if (!emailToken) {
+            const sub = await fetchSubscription(info.paystackSubscriptionCode);
+            emailToken = sub?.email_token;
+        }
+        if (!emailToken) {
+            return { disabled: false, reason: 'no_email_token' };
+        }
+        await disableSubscription(info.paystackSubscriptionCode, emailToken);
+        return { disabled: true };
+    } catch (err) {
+        console.error('[Paystack] disable subscription failed:', err.message);
+        return { disabled: false, reason: err.message };
+    }
+}
+
 /** List Paystack plans (supports status, interval, amount filters). */
 export async function listPlans({ status = 'active', interval, amount, page = 1, perPage = 100 } = {}) {
     const params = new URLSearchParams();

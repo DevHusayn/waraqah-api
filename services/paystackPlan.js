@@ -5,6 +5,7 @@ import {
     PREMIUM_YEARLY_AMOUNT_KOBO,
     normalizeBillingInterval,
 } from './paystack.js';
+import { isProduction } from '../utils/envValidation.js';
 
 const PLAN_CONFIG = {
     monthly: {
@@ -92,7 +93,20 @@ async function resolvePremiumPlanCode(billingInterval) {
     return plan.plan_code;
 }
 
-/** Returns Paystack plan_code (PLN_xxx). Reuses env, cache, or an existing Paystack plan before creating. */
+export function requirePinnedPlanCode(interval = 'monthly') {
+    const billingInterval = normalizeBillingInterval(interval);
+    const config = PLAN_CONFIG[billingInterval];
+    const envCode = process.env[config.envKey]?.trim();
+    if (envCode) return envCode;
+    if (isProduction()) {
+        throw new Error(
+            `Set ${config.envKey} to the Paystack plan code. Production will not create plans at checkout.`,
+        );
+    }
+    return null;
+}
+
+/** Returns Paystack plan_code (PLN_xxx). Production uses env only; local may look up or create. */
 export async function getOrCreatePremiumPlanCode(interval = 'monthly') {
     const billingInterval = normalizeBillingInterval(interval);
     const config = PLAN_CONFIG[billingInterval];
@@ -101,7 +115,7 @@ export async function getOrCreatePremiumPlanCode(interval = 'monthly') {
         return cachedPlanCodes[billingInterval];
     }
 
-    const envCode = process.env[config.envKey];
+    const envCode = requirePinnedPlanCode(billingInterval);
     if (envCode) {
         cachedPlanCodes[billingInterval] = envCode;
         return envCode;

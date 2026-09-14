@@ -7,6 +7,7 @@ import {
     sanitizeEmail,
     isValidObjectId,
 } from '../utils/sanitize.js';
+import { isValidPaystackSignature } from '../services/paystackVerify.js';
 
 test('sanitizePlainText strips control characters and trims', () => {
     assert.equal(sanitizePlainText('  hello\x00world  '), 'helloworld');
@@ -45,6 +46,6 @@ test('paystack webhook signature verification', () => {
     const sig = crypto.createHmac('sha512', secret).update(body).digest('hex');
     const bad = crypto.createHmac('sha512', 'wrong').update(body).digest('hex');
 
-    assert.equal(sig, crypto.createHmac('sha512', secret).update(body).digest('hex'));
-    assert.notEqual(sig, bad);
+    assert.equal(isValidPaystackSignature(body, sig, secret), true);
+    assert.equal(isValidPaystackSignature(body, bad, secret), false);
 });

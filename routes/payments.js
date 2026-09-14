@@ -1,5 +1,4 @@
 import express from 'express';
-import crypto from 'crypto';
 import auth from '../middleware/auth.js';
 import requireEmailVerified from '../middleware/requireEmailVerified.js';
 import User from '../models/User.js';
@@ -33,6 +32,13 @@ import {
     subscriptionMetaFromCharge,
 } from '../services/paystackSubscriptionLink.js';
 import { billingHistoryQuery, expireAbandonedCheckouts } from '../services/billingHistory.js';
+import {
+    PaystackChargeMismatchError,
+    assertChargeMatchesInterval,
+    assertChargeMatchesPayment,
+    chargeMatchesExpected,
+    isValidPaystackSignature,
+} from '../services/paystackVerify.js';
 import { toBusinessInfoResponse, isPremiumActive } from '../utils/businessInfoHelpers.js';
 import { isOriginAllowed } from '../utils/corsConfig.js';
 import {
@@ -107,6 +113,7 @@ async function fulfillPremiumPayment(payment, paystackData, { resolveSubscriptio
     const subMeta = subscriptionMetaFromCharge(paystackData);
 
     if (firstFulfillment) {
+        assertChargeMatchesPayment(paystackData, payment);
         payment.status = 'success';
         payment.paidAt = paystackData.paid_at ? new Date(paystackData.paid_at) : new Date();
         payment.channel = paystackData.channel || '';
@@ -176,6 +183,7 @@ async function recordSubscriptionCharge(userId, paystackData, billingInterval = 
     if (existing) return;
 
     const interval = normalizeBillingInterval(billingInterval);
+    assertChargeMatchesInterval(paystackData, interval);
     const fallbackAmount = getBillingConfig(interval).amountKobo;
 
     await Payment.create({
@@ -197,6 +205,7 @@ async function renewBySubscriptionCode(subscriptionCode, paystackData) {
     if (!info) return null;
 
     const billingInterval = normalizeBillingInterval(info.billingInterval || 'monthly');
+    assertChargeMatchesInterval(paystackData, billingInterval);
     const months = monthsForInterval(billingInterval);
     const subMeta = subscriptionMetaFromCharge(paystackData);
 
@@ -243,7 +252,7 @@ async function resolvePaymentFromCharge(data) {
         }
 
         payment = await Payment.findOne({ userId, status: 'pending' }).sort({ createdAt: -1 });
-        if (payment) {
+        if (payment && chargeMatchesExpected(data, { amount: payment.amount, currency: payment.currency })) {
             return {
                 payment,
                 match: 'pending_by_userId',
@@ -259,7 +268,7 @@ async function resolvePaymentFromCharge(data) {
         const user = await User.findOne({ email: customerEmail.toLowerCase() });
         if (user) {
             payment = await Payment.findOne({ userId: user._id, status: 'pending' }).sort({ createdAt: -1 });
-            if (payment) {
+            if (payment && chargeMatchesExpected(data, { amount: payment.amount, currency: payment.currency })) {
                 return {
                     payment,
                     match: 'pending_by_customer_email',
@@ -371,42 +380,49 @@ router.post('/initialize', auth, requireEmailVerified, async (req, res) => {
 
         const planCode = await getOrCreatePremiumPlanCode(billingInterval);
         const reference = generateReference(user._id);
-
-        const payment = await Payment.create({
-            userId: user._id,
-            reference,
-            amount: billingConfig.amountKobo,
-            currency: 'NGN',
-            status: 'pending',
-            type: 'subscription',
-            billingInterval,
-            switchFromMonthly,
-        });
-
         const callbackUrl = getCallbackUrl(req);
 
-        const data = await initializeTransaction({
-            email: user.email,
-            amountKobo: billingConfig.amountKobo,
-            reference,
-            callbackUrl,
-            planCode,
-            metadata: {
-                userId: String(user._id),
-                paymentId: String(payment._id),
-                plan: 'premium',
-                billing: 'subscription',
-                interval: billingInterval,
+        let payment = null;
+        try {
+            payment = await Payment.create({
+                userId: user._id,
+                reference,
+                amount: billingConfig.amountKobo,
+                currency: 'NGN',
+                status: 'pending',
+                type: 'subscription',
+                billingInterval,
                 switchFromMonthly,
-            },
-        });
+            });
 
-        res.json({
-            authorization_url: data.authorization_url,
-            access_code: data.access_code,
-            reference,
-            callback_url: callbackUrl,
-        });
+            const data = await initializeTransaction({
+                email: user.email,
+                amountKobo: billingConfig.amountKobo,
+                reference,
+                callbackUrl,
+                planCode,
+                metadata: {
+                    userId: String(user._id),
+                    paymentId: String(payment._id),
+                    plan: 'premium',
+                    billing: 'subscription',
+                    interval: billingInterval,
+                    switchFromMonthly,
+                },
+            });
+
+            return res.json({
+                authorization_url: data.authorization_url,
+                access_code: data.access_code,
+                reference,
+                callback_url: callbackUrl,
+            });
+        } catch (err) {
+            if (payment?._id) {
+                await Payment.deleteOne({ _id: payment._id }).catch(() => {});
+            }
+            throw err;
+        }
     } catch (err) {
         res.status(err.message.includes('not configured') ? 503 : 500).json({
             message: err.message || 'Could not start payment',
@@ -440,13 +456,6 @@ router.get('/verify/:reference', auth, paymentVerificationLimiter, async (req, r
         }
 
         if (payment.status !== 'success') {
-            if (payment.status === 'pending' && isPremiumActive(businessInfo)) {
-                payment.status = 'success';
-                payment.paidAt = payment.paidAt || new Date();
-                await payment.save();
-                return respondVerified(businessInfo, true);
-            }
-
             const paystackData = await verifyTransaction(reference);
             if (paystackData.status !== 'success') {
                 payment.status = 'failed';
@@ -473,6 +482,9 @@ router.get('/verify/:reference', auth, paymentVerificationLimiter, async (req, r
 
         return respondVerified(businessInfo, true);
     } catch (err) {
+        if (err instanceof PaystackChargeMismatchError) {
+            return res.status(400).json({ message: err.message });
+        }
         res.status(500).json({ message: err.message || 'Verification failed' });
     }
 });
@@ -572,8 +584,7 @@ export async function paystackWebhookHandler(req, res) {
             return res.status(503).send('Paystack not configured');
         }
 
-        const hash = crypto.createHmac('sha512', secret).update(req.body).digest('hex');
-        const signatureValid = hash === signature;
+        const signatureValid = isValidPaystackSignature(req.body, signature, secret);
         webhookLog('signature', { valid: signatureValid });
 
         if (!signatureValid) return res.status(401).send('Invalid signature');
@@ -591,32 +602,40 @@ export async function paystackWebhookHandler(req, res) {
         });
 
         if (eventType === 'charge.success') {
-            const resolved = await resolvePaymentFromCharge(data);
-            webhookLog('charge.success.resolve', resolved);
+            try {
+                const resolved = await resolvePaymentFromCharge(data);
+                webhookLog('charge.success.resolve', resolved);
 
-            if (resolved.payment) {
-                await fulfillPremiumPayment(resolved.payment, data);
-                const info = await BusinessInfo.findOne({ userId: resolved.payment.userId });
-                webhookLog('charge.success.updated', {
-                    userId: String(resolved.payment.userId),
-                    paymentId: String(resolved.payment._id),
-                    paymentReference: resolved.payment.reference,
-                    plan: info?.plan || null,
-                    subscriptionStatus: info?.subscriptionStatus || null,
-                    premiumUntil: info?.premiumUntil || null,
-                });
-            } else if (data.subscription?.subscription_code) {
-                const info = await renewBySubscriptionCode(data.subscription.subscription_code, data);
-                webhookLog('charge.success.renewBySubscription', {
-                    subscriptionCode: data.subscription.subscription_code,
-                    userId: info ? String(info.userId) : null,
-                    matched: Boolean(info),
-                });
-            } else {
-                webhookLog('charge.success.unhandled', {
-                    reference: data?.reference || null,
-                    reason: 'no_payment_or_subscription_match',
-                });
+                if (resolved.payment) {
+                    await fulfillPremiumPayment(resolved.payment, data);
+                    const info = await BusinessInfo.findOne({ userId: resolved.payment.userId });
+                    webhookLog('charge.success.updated', {
+                        userId: String(resolved.payment.userId),
+                        paymentId: String(resolved.payment._id),
+                        paymentReference: resolved.payment.reference,
+                        plan: info?.plan || null,
+                        subscriptionStatus: info?.subscriptionStatus || null,
+                        premiumUntil: info?.premiumUntil || null,
+                    });
+                } else if (data.subscription?.subscription_code) {
+                    const info = await renewBySubscriptionCode(data.subscription.subscription_code, data);
+                    webhookLog('charge.success.renewBySubscription', {
+                        subscriptionCode: data.subscription.subscription_code,
+                        userId: info ? String(info.userId) : null,
+                        matched: Boolean(info),
+                    });
+                } else {
+                    webhookLog('charge.success.unhandled', {
+                        reference: data?.reference || null,
+                        reason: 'no_payment_or_subscription_match',
+                    });
+                }
+            } catch (err) {
+                if (err instanceof PaystackChargeMismatchError) {
+                    webhookLog('charge.success.rejected', { reason: err.message });
+                } else {
+                    throw err;
+                }
             }
         }
 
