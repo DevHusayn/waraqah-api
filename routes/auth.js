@@ -72,6 +72,7 @@ import Product from '../models/Product.js';
 import Payment from '../models/Payment.js';
 import AdminNote from '../models/AdminNote.js';
 import UserActivityLog from '../models/UserActivityLog.js';
+import DeletedUser from '../models/DeletedUser.js';
 import { buildUserTimeline, buildSubscriptionHistory } from '../utils/adminUserTimeline.js';
 import {
     parseAdminUserFilters,
@@ -215,6 +216,25 @@ router.delete('/admin/users/:id', auth, requireAdmin, validateObjectId(), async 
         const info = await BusinessInfo.findOne({ userId: req.params.id });
         await disablePaystackSubscriptionForInfo(info);
 
+        try {
+            await DeletedUser.updateOne(
+                { userId: existing._id },
+                {
+                    $setOnInsert: {
+                        userId: existing._id,
+                        email: existing.email || '',
+                        name: existing.name || '',
+                        status: existing.status || '',
+                        isAdmin: Boolean(existing.isAdmin),
+                        deletedBy: req.user.userId,
+                    },
+                },
+                { upsert: true }
+            );
+        } catch (err) {
+            console.error('Failed to record deleted user:', err.message);
+        }
+
         const user = await User.findByIdAndDelete(req.params.id);
         if (!user) return res.status(404).json({ message: 'User not found' });
         await BusinessInfo.deleteOne({ userId: req.params.id });
@@ -233,13 +253,17 @@ router.get('/admin/users', auth, requireAdmin, async (req, res) => {
         const filters = parseAdminUserFilters(req.query);
         const filter = await buildAdminUserFilter(filters);
 
-        const [users, total, totalUsers, premiumCount, suspendedCount] = await Promise.all([
-            User.find(filter, '-password').sort({ createdAt: -1 }).skip(skip).limit(limit),
-            User.countDocuments(filter),
-            User.countDocuments({}),
-            BusinessInfo.countDocuments({ plan: 'premium' }),
-            User.countDocuments({ status: 'suspended' }),
-        ]);
+        const [users, total, totalUsers, activeCount, premiumCount, suspendedCount, adminCount, deletedCount] =
+            await Promise.all([
+                User.find(filter, '-password').sort({ createdAt: -1 }).skip(skip).limit(limit),
+                User.countDocuments(filter),
+                User.countDocuments({}),
+                User.countDocuments({ status: 'active' }),
+                BusinessInfo.countDocuments({ plan: 'premium' }),
+                User.countDocuments({ status: 'suspended' }),
+                User.countDocuments({ isAdmin: true }),
+                DeletedUser.countDocuments({}),
+            ]);
 
         const usersWithDetails = await enrichAdminUsers(users);
         res.json({
@@ -247,8 +271,11 @@ router.get('/admin/users', auth, requireAdmin, async (req, res) => {
             pagination: buildPaginationMeta(page, limit, total),
             summary: {
                 total: totalUsers,
+                active: activeCount,
                 premium: premiumCount,
                 suspended: suspendedCount,
+                admin: adminCount,
+                deleted: deletedCount,
             },
         });
     } catch (err) {
