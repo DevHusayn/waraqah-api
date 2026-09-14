@@ -9,6 +9,7 @@ import {
     nextPaymentDateFromSubscription,
     reconcilePremiumUntilForUser,
 } from './premiumActivation.js';
+import { expireAbandonedCheckouts } from './billingHistory.js';
 import {
     fetchCustomer,
     fetchSubscription,
@@ -139,47 +140,19 @@ async function findSubscriptionCodeForEmail(email, billingInterval) {
     }
 }
 
-async function backfillPaymentFromSubscription(userId, subscription, billingInterval) {
-    const subCode = subscription?.subscriptionCode;
-    if (!userId || !subCode) return null;
-
-    const existing = await Payment.findOne({
-        userId,
-        $or: [
-            { paystackSubscriptionCode: subCode },
-            { type: 'subscription', status: 'success' },
-        ],
-    }).sort({ paidAt: -1, createdAt: -1 });
-    if (existing) {
-        if (!existing.paystackSubscriptionCode) {
-            existing.paystackSubscriptionCode = subCode;
-            await existing.save();
-        }
-        return existing;
-    }
-
-    let tx = null;
-    if (subscription.customerCode) {
-        try {
-            const listed = await listTransactions({
-                customer: subscription.customerCode,
-                status: 'success',
-                perPage: 20,
-            });
-            const rows = normalizeSubscriptionList(listed);
-            tx = rows.find((row) => String(row?.status || '').toLowerCase() === 'success') || rows[0];
-        } catch (err) {
-            console.error('[Paystack] listTransactions failed:', err.message);
-        }
-    }
-
+async function upsertSuccessPaymentFromTransaction(userId, tx, { subscriptionCode, billingInterval }) {
     if (!tx?.reference) return null;
 
     const already = await Payment.findOne({ reference: tx.reference });
     if (already) {
         already.userId = already.userId || userId;
-        already.paystackSubscriptionCode = already.paystackSubscriptionCode || subCode;
+        already.paystackSubscriptionCode = already.paystackSubscriptionCode || subscriptionCode;
         already.status = 'success';
+        already.type = already.type || 'subscription';
+        already.billingInterval = already.billingInterval || billingInterval;
+        already.channel = already.channel || tx.channel || '';
+        already.paidAt = already.paidAt || (tx.paid_at ? new Date(tx.paid_at) : new Date());
+        if (tx.amount && !already.amount) already.amount = tx.amount;
         await already.save();
         return already;
     }
@@ -194,8 +167,51 @@ async function backfillPaymentFromSubscription(userId, subscription, billingInte
         billingInterval,
         channel: tx.channel || '',
         paidAt: tx.paid_at ? new Date(tx.paid_at) : new Date(),
-        paystackSubscriptionCode: subCode,
+        paystackSubscriptionCode: subscriptionCode,
     });
+}
+
+/** Import Paystack success charges even when the subscription is already linked. */
+export async function backfillPaymentsFromSubscription(userId, subscription, billingInterval) {
+    const subCode = subscription?.subscriptionCode;
+    if (!userId || !subCode) return [];
+
+    const interval = normalizeBillingInterval(billingInterval || 'monthly');
+    let rows = successTransactionsFromSubscription(subscription);
+    const customerLookup = subscription.customerId || subscription.customerCode;
+    if (customerLookup) {
+        try {
+            const listed = await listTransactions({
+                customer: customerLookup,
+                status: 'success',
+                perPage: 50,
+            });
+            rows = [...rows, ...normalizeSubscriptionList(listed)];
+        } catch (err) {
+            console.error('[Paystack] listTransactions failed:', err.message);
+        }
+    }
+
+    const seen = new Set();
+    const successes = rows.filter((row) => {
+        const reference = String(row?.reference || '').trim();
+        const status = String(row.status || 'success').toLowerCase();
+        if (!reference || seen.has(reference)) return false;
+        if (status && status !== 'success' && status !== 'paid') return false;
+        seen.add(reference);
+        return true;
+    });
+
+    const imported = [];
+    for (const tx of successes) {
+        const payment = await upsertSuccessPaymentFromTransaction(userId, tx, {
+            subscriptionCode: subCode,
+            billingInterval: interval,
+        });
+        if (payment) imported.push(payment);
+    }
+
+    return imported;
 }
 
 async function resolveSubscriptionCode({ userId, payment, paystackData, billingInterval }) {
@@ -237,16 +253,48 @@ async function resolveSubscriptionCode({ userId, payment, paystackData, billingI
     return { meta, paystackData };
 }
 
+export function successTransactionsFromSubscription(subscription) {
+    const invoices = [
+        ...(Array.isArray(subscription?.invoices) ? subscription.invoices : []),
+        ...(subscription?.mostRecentInvoice ? [subscription.mostRecentInvoice] : []),
+    ];
+    const rows = [];
+    for (const inv of invoices) {
+        const tx = inv?.transaction && typeof inv.transaction === 'object' ? inv.transaction : {};
+        const reference = typeof tx.reference === 'string'
+            ? tx.reference
+            : (typeof inv?.reference === 'string' ? inv.reference : '');
+        if (!reference) continue;
+        const status = String(tx.status || inv?.status || '').toLowerCase();
+        if (status && status !== 'success' && status !== 'paid') continue;
+        rows.push({
+            reference,
+            amount: tx.amount || inv?.amount,
+            status: 'success',
+            paid_at: tx.paid_at || inv?.paid_at || inv?.paidAt,
+            channel: tx.channel || '',
+            currency: tx.currency || 'NGN',
+        });
+    }
+    return rows;
+}
+
 async function buildSubscriptionPayload(subscriptionCode, partialMeta = {}) {
     let customerCode = partialMeta.customerCode || '';
+    let customerId = partialMeta.customerId || '';
     let emailToken = partialMeta.emailToken || '';
     let nextPaymentDate = partialMeta.nextPaymentDate || null;
+    let invoices = [];
+    let mostRecentInvoice = null;
 
     try {
         const sub = await fetchSubscription(subscriptionCode);
         customerCode = sub?.customer?.customer_code || customerCode;
+        customerId = sub?.customer?.id || customerId;
         emailToken = sub?.email_token || emailToken;
         nextPaymentDate = nextPaymentDateFromSubscription(sub) || nextPaymentDate;
+        invoices = Array.isArray(sub?.invoices) ? sub.invoices : [];
+        mostRecentInvoice = sub?.most_recent_invoice || null;
     } catch (err) {
         console.error('[Paystack] fetchSubscription failed:', err.message);
     }
@@ -254,8 +302,11 @@ async function buildSubscriptionPayload(subscriptionCode, partialMeta = {}) {
     return {
         subscriptionCode,
         customerCode,
+        customerId,
         emailToken,
         nextPaymentDate,
+        invoices,
+        mostRecentInvoice,
     };
 }
 
@@ -264,11 +315,21 @@ async function buildSubscriptionPayload(subscriptionCode, partialMeta = {}) {
  * Safe to call multiple times (verify retries, webhooks, repair).
  */
 export async function ensurePaystackSubscriptionLinked({ userId, payment = null, paystackData = null }) {
+    await expireAbandonedCheckouts(userId);
+
     let info = await reconcilePremiumUntilForUser(userId);
     if (!info) {
         info = await BusinessInfo.findOne({ userId });
     }
     if (!needsSubscriptionLink(info)) {
+        const subscription = await buildSubscriptionPayload(info.paystackSubscriptionCode, {
+            customerCode: info.paystackCustomerCode,
+        });
+        await backfillPaymentsFromSubscription(
+            userId,
+            subscription,
+            info.billingInterval || 'monthly',
+        );
         return applyPaystackNextPaymentDate(info);
     }
 
@@ -301,9 +362,8 @@ export async function ensurePaystackSubscriptionLinked({ userId, payment = null,
             payment.paidAt = payment.paidAt || new Date();
         }
         await payment.save();
-    } else {
-        await backfillPaymentFromSubscription(userId, subscription, billingInterval);
     }
+    await backfillPaymentsFromSubscription(userId, subscription, billingInterval);
 
     const linked = isPremiumActive(info)
         ? await linkPaystackSubscription(userId, { subscription, billingInterval })

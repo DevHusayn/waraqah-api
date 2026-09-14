@@ -32,6 +32,7 @@ import {
     resolveUserIdForSubscriptionEvent,
     subscriptionMetaFromCharge,
 } from '../services/paystackSubscriptionLink.js';
+import { billingHistoryQuery, expireAbandonedCheckouts } from '../services/billingHistory.js';
 import { toBusinessInfoResponse, isPremiumActive } from '../utils/businessInfoHelpers.js';
 import { isOriginAllowed } from '../utils/corsConfig.js';
 import {
@@ -321,9 +322,10 @@ router.get('/plan', auth, paymentVerificationLimiter, async (req, res) => {
 router.get('/history', auth, async (req, res) => {
     try {
         const { page, limit, skip } = parsePagination(req);
+        await expireAbandonedCheckouts(req.user.userId);
         const { data, total } = await paginateFind(
             Payment,
-            { userId: req.user.userId },
+            billingHistoryQuery(req.user.userId),
             {
                 skip,
                 limit,

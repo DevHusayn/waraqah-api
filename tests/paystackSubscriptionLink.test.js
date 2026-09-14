@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
     needsSubscriptionLink,
     pickLatestActiveSubscription,
+    successTransactionsFromSubscription,
     subscriptionCustomerEmail,
     subscriptionMetaFromCharge,
 } from '../services/paystackSubscriptionLink.js';
@@ -62,6 +63,23 @@ test('subscriptionCustomerEmail reads the Paystack customer email', () => {
         subscriptionCustomerEmail({ customer: { email: 'Mubarak@Gmail.com' } }),
         'mubarak@gmail.com',
     );
+});
+
+test('successTransactionsFromSubscription reads paid invoices', () => {
+    const rows = successTransactionsFromSubscription({
+        invoices: [
+            {
+                status: 'paid',
+                amount: 500000,
+                paid_at: '2026-08-27T10:00:00.000Z',
+                transaction: { reference: 'T123', status: 'success', channel: 'card' },
+            },
+        ],
+    });
+
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].reference, 'T123');
+    assert.equal(rows[0].amount, 500000);
 });
 
 test('needsSubscriptionLink is true when subscription code or status is missing', () => {
