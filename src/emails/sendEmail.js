@@ -25,6 +25,7 @@ const NOTIFICATION_EMAIL_TYPES = new Set([
     'premium-payment-failed',
     'premium-subscription-cancelled',
     'premium-upgrade-success',
+    'premium-granted-by-admin',
     'account-suspended',
     'account-reactivated',
 ]);

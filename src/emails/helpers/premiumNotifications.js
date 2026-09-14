@@ -3,6 +3,7 @@ import BusinessInfo from '../../../models/CompanyInfo.js';
 import { sendPremiumUpgradeSuccessEmail } from '../senders/premiumUpgradeSuccessEmail.js';
 import { sendPremiumPaymentFailedEmail } from '../senders/premiumPaymentFailedEmail.js';
 import { sendPremiumSubscriptionCancelledEmail } from '../senders/premiumSubscriptionCancelledEmail.js';
+import { sendPremiumGrantedByAdminEmail } from '../senders/premiumGrantedByAdminEmail.js';
 import { sendAccountSuspendedEmail } from '../senders/accountSuspendedEmail.js';
 import { sendAccountReactivatedEmail } from '../senders/accountReactivatedEmail.js';
 import { getFrontendBaseUrl } from './invoiceContext.js';
@@ -65,6 +66,20 @@ export async function notifyPremiumPaymentFailed(userId) {
         });
     } catch (err) {
         logFailure('Premium payment failed', err);
+    }
+}
+
+export async function notifyPremiumGrantedByAdmin(userId) {
+    try {
+        const ctx = await loadUserContext(userId);
+        if (!ctx) return;
+        await sendPremiumGrantedByAdminEmail({
+            to: ctx.to,
+            userName: ctx.userName,
+            premiumUntil: formatDateLabel(ctx.premiumUntil),
+        });
+    } catch (err) {
+        logFailure('Premium granted by admin', err);
     }
 }
 

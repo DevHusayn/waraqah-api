@@ -33,7 +33,11 @@ import {
     sendRegistrationEmails,
     sendWelcomeAfterVerification,
 } from '../src/emails/helpers/accountEmails.js';
-import { notifyAccountReactivated, notifyAccountSuspended } from '../src/emails/helpers/premiumNotifications.js';
+import {
+    notifyAccountReactivated,
+    notifyAccountSuspended,
+    notifyPremiumGrantedByAdmin,
+} from '../src/emails/helpers/premiumNotifications.js';
 import { EMAIL_VERIFICATION_EXPIRY_HOURS } from '../src/emails/config.js';
 import { isStrongPassword, PASSWORD_REQUIREMENTS_MESSAGE } from '../utils/passwordValidation.js';
 import { createPasswordResetToken, hashPasswordResetToken } from '../utils/resetToken.js';
@@ -720,6 +724,9 @@ router.patch('/admin/users/:id/plan', auth, requireAdmin, validateObjectId(), as
                 toPlan: plan,
                 actorId: req.user.userId,
             });
+        }
+        if (previousPlan !== PLANS.PREMIUM && plan === PLANS.PREMIUM) {
+            await notifyPremiumGrantedByAdmin(req.params.id);
         }
         res.json({ message: 'Plan updated', businessInfo: toBusinessInfoResponse(info) });
     } catch (err) {

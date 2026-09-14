@@ -23,6 +23,7 @@ export { sendAccountSuspendedEmail } from './accountSuspendedEmail.js';
 export { sendAccountReactivatedEmail } from './accountReactivatedEmail.js';
 export { sendNewUserAdminNotification } from './newUserAdminNotification.js';
 export { sendPremiumUpgradeSuccessEmail } from './premiumUpgradeSuccessEmail.js';
+export { sendPremiumGrantedByAdminEmail } from './premiumGrantedByAdminEmail.js';
 export { sendPremiumPaymentFailedEmail } from './premiumPaymentFailedEmail.js';
 export { sendPremiumSubscriptionCancelledEmail } from './premiumSubscriptionCancelledEmail.js';
 export { sendPremiumExpiryReminderEmail } from './premiumExpiryReminderEmail.js';

@@ -30,6 +30,7 @@ export {
     sendAccountReactivatedEmail,
     sendNewUserAdminNotification,
     sendPremiumUpgradeSuccessEmail,
+    sendPremiumGrantedByAdminEmail,
     sendPremiumPaymentFailedEmail,
     sendPremiumSubscriptionCancelledEmail,
     sendPremiumExpiryReminderEmail,
@@ -50,6 +51,7 @@ export {
 
 export {
     notifyPremiumUpgradeSuccess,
+    notifyPremiumGrantedByAdmin,
     notifyPremiumPaymentFailed,
     notifyPremiumSubscriptionCancelled,
     notifyAccountSuspended,
