@@ -201,6 +201,7 @@ test('listAdminMessageTemplates includes the follow-up drafts', () => {
         'we-miss-you',
         'finish-setup',
         'try-premium',
+        'quota-reached',
         'billing-help',
         'need-a-hand',
     ]);
@@ -213,6 +214,15 @@ test('applyAdminMessageTemplate fills we-miss-you and a dashboard button', () =>
     assert.equal(applied.actionPreset, 'dashboard');
     assert.equal(applied.actionLabel, 'Go to dashboard');
     assert.match(applied.body, /clients, products, and records/);
+});
+
+test('applyAdminMessageTemplate fills quota-reached with an upgrade button', () => {
+    const applied = applyAdminMessageTemplate('quota-reached', { firstName: 'Ada Lovelace' });
+    assert.equal(applied.templateId, 'quota-reached');
+    assert.equal(applied.subject, "You've used this month's free invoices and quotations");
+    assert.equal(applied.actionPreset, 'upgrade');
+    assert.equal(applied.actionLabel, 'Upgrade to Premium');
+    assert.match(applied.body, /all 5 free invoices and quotations/);
 });
 
 test('applyAdminMessageTemplate returns an empty blank draft', () => {

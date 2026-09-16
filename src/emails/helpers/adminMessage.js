@@ -3,6 +3,7 @@ import {
     sanitizeOptionalEmail,
     sanitizePlainText,
 } from '../../../utils/sanitize.js';
+import { FREE_MONTHLY_INVOICE_LIMIT } from '../../../utils/invoiceLimits.js';
 import { getNoReplyEmail, getSupportEmail, getSupportFromEmail, getWebsiteUrl } from '../config.js';
 
 export const ADMIN_MESSAGE_FROM_PRESETS = ['noreply', 'support', 'custom'];
@@ -69,6 +70,19 @@ export const ADMIN_MESSAGE_TEMPLATES = [
             'If you are ready to look more professional and work with fewer limits, Premium is the next step.',
             'You keep every client, product, and record you already have. Upgrade takes about a minute, and you can start using the extra room right away.',
             'See what Premium includes and upgrade when you are ready. Reply if you want help choosing a plan.',
+        ].join('\n\n'),
+        actionPreset: 'upgrade',
+        actionLabel: 'Upgrade to Premium',
+    },
+    {
+        id: 'quota-reached',
+        label: 'Quota reached',
+        subject: "You've used this month's free invoices and quotations",
+        preview: 'Upgrade to Premium to keep sending without waiting for next month.',
+        body: [
+            `You have used all ${FREE_MONTHLY_INVOICE_LIMIT} free invoices and quotations for this month, so new sales documents are paused until the next cycle.`,
+            'Your clients, products, and existing records are still there. Upgrade to Premium and you can keep creating invoices and quotations right away, with your logo on PDFs and the other Premium extras.',
+            'Upgrade takes about a minute. If you want help choosing a plan, reply to this email.',
         ].join('\n\n'),
         actionPreset: 'upgrade',
         actionLabel: 'Upgrade to Premium',
