@@ -37,6 +37,9 @@ const businessInfoSchema = new mongoose.Schema({
     paymentAccountName: { type: String, default: '' },
     paymentBankName: { type: String, default: '' },
     paymentAccountNumber: { type: String, default: '' },
+    paymentSortCode: { type: String, default: '' },
+    paymentIban: { type: String, default: '' },
+    paymentSwift: { type: String, default: '' },
     paymentInstructions: { type: String, default: '' },
     invoiceTemplateId: { type: String, default: 'classic' },
     /** Email invoice to client automatically when finalized (pending). */

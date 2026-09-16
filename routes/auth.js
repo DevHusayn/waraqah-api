@@ -341,6 +341,9 @@ function sanitizeRegisterBusinessInfo(businessInfo) {
         paymentAccountName: sanitizePlainText(businessInfo.paymentAccountName, 120),
         paymentBankName: sanitizePlainText(businessInfo.paymentBankName, 120),
         paymentAccountNumber: sanitizePlainText(businessInfo.paymentAccountNumber, 40),
+        paymentSortCode: sanitizePlainText(businessInfo.paymentSortCode, 20),
+        paymentIban: sanitizePlainText(businessInfo.paymentIban, 42),
+        paymentSwift: sanitizePlainText(businessInfo.paymentSwift, 20),
         paymentInstructions: sanitizePlainText(businessInfo.paymentInstructions, 500),
     };
 }

@@ -82,3 +82,27 @@ test('toBusinessInfoResponse hides defaultDocumentFooter for free plans', () => 
     });
     assert.equal(shown.defaultDocumentFooter, 'Pay with thanks.');
 });
+
+test('pickAllowedBusinessUpdates persists international payment fields', () => {
+    const updates = pickAllowedBusinessUpdates({
+        paymentSortCode: ' 12-34-56 ',
+        paymentIban: ' GB82 WEST 1234 5698 7654 32 ',
+        paymentSwift: ' NWBKGB2L ',
+    });
+    assert.equal(updates.paymentSortCode, '12-34-56');
+    assert.equal(updates.paymentIban, 'GB82 WEST 1234 5698 7654 32');
+    assert.equal(updates.paymentSwift, 'NWBKGB2L');
+});
+
+test('toBusinessInfoResponse includes international payment fields', () => {
+    const response = toBusinessInfoResponse({
+        name: 'Acme',
+        plan: 'free',
+        paymentSortCode: '12-34-56',
+        paymentIban: 'GB82WEST12345698765432',
+        paymentSwift: 'NWBKGB2L',
+    });
+    assert.equal(response.paymentSortCode, '12-34-56');
+    assert.equal(response.paymentIban, 'GB82WEST12345698765432');
+    assert.equal(response.paymentSwift, 'NWBKGB2L');
+});

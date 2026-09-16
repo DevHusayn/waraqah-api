@@ -51,6 +51,9 @@ const ALLOWED_UPDATE_FIELDS = [
     'paymentAccountName',
     'paymentBankName',
     'paymentAccountNumber',
+    'paymentSortCode',
+    'paymentIban',
+    'paymentSwift',
     'paymentInstructions',
     'invoiceTemplateId',
     'autoEmailInvoices',
@@ -78,6 +81,9 @@ const TEXT_LIMITS = {
     paymentAccountName: 120,
     paymentBankName: 120,
     paymentAccountNumber: 40,
+    paymentSortCode: 20,
+    paymentIban: 42,
+    paymentSwift: 20,
     paymentInstructions: 1000,
     defaultDocumentFooter: 500,
 };
@@ -224,7 +230,15 @@ export function pickAllowedBusinessUpdates(body, { allowPlan = false, premium = 
         updates.defaultCurrency = assertValidCurrency(updates.defaultCurrency);
     }
 
-    for (const key of ['paymentAccountName', 'paymentBankName', 'paymentAccountNumber', 'paymentInstructions']) {
+    for (const key of [
+        'paymentAccountName',
+        'paymentBankName',
+        'paymentAccountNumber',
+        'paymentSortCode',
+        'paymentIban',
+        'paymentSwift',
+        'paymentInstructions',
+    ]) {
         if (updates[key] !== undefined) {
             updates[key] = sanitizePlainText(updates[key], TEXT_LIMITS[key]);
         }
@@ -301,6 +315,9 @@ export function toBusinessInfoResponse(doc, { includeAssets = true } = {}) {
         paymentAccountName: o.paymentAccountName || '',
         paymentBankName: o.paymentBankName || '',
         paymentAccountNumber: o.paymentAccountNumber || '',
+        paymentSortCode: o.paymentSortCode || '',
+        paymentIban: o.paymentIban || '',
+        paymentSwift: o.paymentSwift || '',
         paymentInstructions: o.paymentInstructions || '',
         invoiceTemplateId,
         autoEmailInvoices: Boolean(o.autoEmailInvoices),
@@ -364,6 +381,9 @@ export const defaultBusinessInfoFields = {
     paymentAccountName: '',
     paymentBankName: '',
     paymentAccountNumber: '',
+    paymentSortCode: '',
+    paymentIban: '',
+    paymentSwift: '',
     paymentInstructions: '',
     invoiceTemplateId: DEFAULT_TEMPLATE_ID,
     autoEmailInvoices: false,

@@ -58,6 +58,9 @@ function sanitizePublicBusiness(info) {
         paymentAccountName: o.paymentAccountName || '',
         paymentBankName: o.paymentBankName || '',
         paymentAccountNumber: o.paymentAccountNumber || '',
+        paymentSortCode: o.paymentSortCode || '',
+        paymentIban: o.paymentIban || '',
+        paymentSwift: o.paymentSwift || '',
         paymentInstructions: o.paymentInstructions || '',
         defaultDocumentFooter: premium ? (o.defaultDocumentFooter || '') : '',
     };
