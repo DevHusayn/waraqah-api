@@ -15,6 +15,11 @@ import {
     docCountsAsRealizedSale,
     scaleByPaidRatio,
 } from './realizedSales.js';
+import {
+    DOCUMENT_BOOKS_FIELDS,
+    getBusinessCurrencyForUser,
+    projectDocIntoBooks,
+} from './documentCurrency.js';
 
 function resolvePaymentMethod(doc) {
     if (Array.isArray(doc.payments) && doc.payments.length > 0) {
@@ -179,7 +184,7 @@ function isSoldTransaction(documentType) {
 }
 
 const DOC_SELECT_FIELDS =
-    'invoiceNumber receiptNumber date clientId items status paymentMethod payments total amountPaid discount discountType discountValue documentType';
+    `invoiceNumber receiptNumber date clientId items status paymentMethod payments total amountPaid discount discountType discountValue documentType ${DOCUMENT_BOOKS_FIELDS}`;
 
 /**
  * Aggregate catalog-linked sales activity for a product.
@@ -216,13 +221,19 @@ export async function getProductActivity(userId, productId) {
             status: { $nin: ['draft', 'cancelled', 'rejected'] },
             convertedInvoiceId: null,
         })
-            .select('quotationNumber date clientId items status')
+            .select(`quotationNumber date clientId items status ${DOCUMENT_BOOKS_FIELDS}`)
             .sort({ date: -1, createdAt: -1 })
             .lean(),
     ]);
 
+    const businessCurrency = await getBusinessCurrencyForUser(userId);
+    const invoiceBooks = invoices.map((doc) => projectDocIntoBooks(doc, businessCurrency)).filter(Boolean);
+    const receiptBooks = receipts.map((doc) => projectDocIntoBooks(doc, businessCurrency)).filter(Boolean);
+    const quotationBooks = quotations
+        .map((doc) => projectDocIntoBooks(doc, businessCurrency) || doc);
+
     const clientIds = new Set();
-    for (const doc of [...invoices, ...receipts, ...quotations]) {
+    for (const doc of [...invoiceBooks, ...receiptBooks, ...quotationBooks]) {
         if (doc.clientId) clientIds.add(String(doc.clientId));
     }
 
@@ -240,7 +251,7 @@ export async function getProductActivity(userId, productId) {
     const catalogUnitCost = product.unitCost ?? 0;
     const trackInventory = Boolean(product.trackInventory);
 
-    for (const doc of invoices) {
+    for (const doc of invoiceBooks) {
         const row = buildTransaction(doc, 'invoice', productId, clientMap, catalogUnitCost, {
             trackInventory,
         });
@@ -252,7 +263,7 @@ export async function getProductActivity(userId, productId) {
         }
     }
 
-    for (const doc of receipts) {
+    for (const doc of receiptBooks) {
         const row = buildTransaction(doc, 'receipt', productId, clientMap, catalogUnitCost, {
             trackInventory,
         });
@@ -264,7 +275,7 @@ export async function getProductActivity(userId, productId) {
         }
     }
 
-    for (const doc of quotations) {
+    for (const doc of quotationBooks) {
         const row = buildTransaction(doc, 'quotation', productId, clientMap, catalogUnitCost, {
             trackInventory,
         });

@@ -14,11 +14,16 @@ import {
     docCountsAsRealizedSale,
 } from './realizedSales.js';
 import { isValidObjectId } from './sanitize.js';
+import {
+    DOCUMENT_BOOKS_FIELDS,
+    getBusinessCurrencyForUser,
+    projectDocsIntoBooks,
+} from './documentCurrency.js';
 
 export const DEFAULT_RANKING_LIMIT = 5;
 
 const SALE_DOC_FIELDS =
-    'date status total amountPaid documentType items discount discountType discountValue clientId clientName';
+    `date status total amountPaid documentType items discount discountType discountValue clientId clientName ${DOCUMENT_BOOKS_FIELDS}`;
 
 function toUserObjectId(userId) {
     if (userId instanceof mongoose.Types.ObjectId) return userId;
@@ -55,9 +60,13 @@ function compareDesc(primary, secondary) {
 
 export async function loadSaleDocsForUser(userId) {
     const uid = toUserObjectId(userId);
-    return Invoice.find({ userId: uid, status: { $ne: 'draft' } })
-        .select(SALE_DOC_FIELDS)
-        .lean();
+    const [docs, businessCurrency] = await Promise.all([
+        Invoice.find({ userId: uid, status: { $ne: 'draft' } })
+            .select(SALE_DOC_FIELDS)
+            .lean(),
+        getBusinessCurrencyForUser(userId),
+    ]);
+    return projectDocsIntoBooks(docs, businessCurrency);
 }
 
 /**

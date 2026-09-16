@@ -124,3 +124,15 @@ test('assertInvoiceDeleteAllowed rejects cancelled invoices', () => {
 test('assertInvoiceDeleteAllowed allows pending invoices', () => {
     assert.doesNotThrow(() => assertInvoiceDeleteAllowed({ status: 'pending' }));
 });
+
+test('sanitizeInvoicePayload accepts any valid ISO currency', () => {
+    const payload = sanitizeInvoicePayload({ status: 'draft', currency: 'jpy' });
+    assert.equal(payload.currency, 'JPY');
+});
+
+test('sanitizeInvoicePayload rejects invalid currency codes', () => {
+    assert.throws(
+        () => sanitizeInvoicePayload({ status: 'draft', currency: 'XXX' }),
+        (err) => err.status === 400 && /currency/i.test(err.message)
+    );
+});

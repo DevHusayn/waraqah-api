@@ -3,6 +3,11 @@ import Client from '../models/Client.js';
 import { buildMonthlyStatement } from './monthlyStatementBuild.js';
 import { buildIssueDateMonthFilter } from './listMonthFilter.js';
 import { INVOICE_ONLY_FILTER, RECEIPT_ONLY_FILTER } from './invoiceDocumentFilter.js';
+import {
+    DOCUMENT_BOOKS_FIELDS,
+    getBusinessCurrencyForUser,
+    projectDocsIntoBooks,
+} from './documentCurrency.js';
 
 function mapDocument(doc) {
     return {
@@ -39,17 +44,19 @@ export async function loadMonthlyStatementForUser(userId, year, month) {
 
     const [invoices, receipts, clients] = await Promise.all([
         Invoice.find({ ...baseFilter, ...INVOICE_ONLY_FILTER })
-            .select('clientId date status total amountPaid documentType')
+            .select(`clientId date status total amountPaid documentType ${DOCUMENT_BOOKS_FIELDS}`)
             .lean(),
         Invoice.find({ ...baseFilter, ...RECEIPT_ONLY_FILTER })
-            .select('clientId date status total amountPaid documentType')
+            .select(`clientId date status total amountPaid documentType ${DOCUMENT_BOOKS_FIELDS}`)
             .lean(),
         Client.find({ userId }).select('name email company').lean(),
     ]);
 
+    const businessCurrency = await getBusinessCurrencyForUser(userId);
+
     return buildMonthlyStatement({
-        invoices: invoices.map(mapDocument),
-        receipts: receipts.map(mapDocument),
+        invoices: projectDocsIntoBooks(invoices, businessCurrency).map(mapDocument),
+        receipts: projectDocsIntoBooks(receipts, businessCurrency).map(mapDocument),
         clients: clients.map(mapClient),
         year,
         month,

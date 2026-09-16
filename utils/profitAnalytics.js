@@ -34,6 +34,11 @@ import {
     computePeriodExpensesFromRecords,
     mergeExpensesIntoProfitSummary,
 } from './expenseAnalytics.js';
+import {
+    DOCUMENT_BOOKS_FIELDS,
+    getBusinessCurrencyForUser,
+    projectDocsIntoBooks,
+} from './documentCurrency.js';
 
 export { loadProductCostMap };
 
@@ -341,8 +346,10 @@ export async function getProfitSummaryForUser(
 ) {
     const uid = toUserObjectId(userId);
     const docs = await Invoice.find({ userId: uid, status: { $ne: 'draft' } })
-        .select('date status total amountPaid documentType items discount discountType discountValue')
+        .select(`date status total amountPaid documentType items discount discountType discountValue ${DOCUMENT_BOOKS_FIELDS}`)
         .lean();
+    const businessCurrency = await getBusinessCurrencyForUser(userId);
+    const booksDocs = projectDocsIntoBooks(docs, businessCurrency);
 
     const [productCostById, products] = await Promise.all([
         loadProductCostMap(userId, docs),
@@ -365,7 +372,7 @@ export async function getProfitSummaryForUser(
 
     const nameById = new Map(products.map((product) => [String(product._id), product.name || 'Product']));
 
-    const summary = buildProfitSummaryFromDocs(docs, {
+    const summary = buildProfitSummaryFromDocs(booksDocs, {
         year,
         month,
         timeZone,
@@ -395,7 +402,7 @@ export async function getProfitSummaryForUser(
 
     const previousPeriod = previousAnalyticsPeriod(resolvedPeriod);
     const previousPeriodProfit = previousPeriod
-        ? computePeriodProfitFromDocs(docs, previousPeriod, null, tz, productCostById)
+        ? computePeriodProfitFromDocs(booksDocs, previousPeriod, null, tz, productCostById)
         : { totals: { grossProfit: 0, revenue: 0 } };
     const previousExpenseTotals = {
         ...(previousPeriod

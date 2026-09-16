@@ -49,6 +49,7 @@ import { countListSummary, buildSummaryResponse, resolveListSummaryOptions, isSu
 import { getListPeriodMongoFilter } from '../utils/listMonthFilter.js';
 import { sendQuotationListExport } from '../utils/quotationListExport.js';
 import { applyClientSnapshot, DOCUMENT_CLIENT_SEARCH_FIELDS } from '../utils/clientSnapshot.js';
+import { attachDocumentBaseAmounts } from '../utils/documentCurrency.js';
 import { attachClientNamesToDocuments, attachClientNamesToDocument } from '../utils/attachClientNames.js';
 
 const router = express.Router();
@@ -246,6 +247,7 @@ router.post('/', auth, requireEmailVerified, async (req, res) => {
         await applyClientSnapshot(normalized, req.user.userId);
         const payload = await assignQuotationNumber(normalized, null, req.user.userId);
         attachQuotationPublicTokenIfNeeded(payload);
+        await attachDocumentBaseAmounts(req.user.userId, payload);
         const quotation = await Quotation.create({
             ...payload,
             userId: req.user.userId,
@@ -301,6 +303,7 @@ router.put('/:id', auth, requireEmailVerified, validateObjectId(), async (req, r
 
         const payload = await assignQuotationNumber(normalized, existing, req.user.userId);
         attachQuotationPublicTokenIfNeeded(payload, existing);
+        await attachDocumentBaseAmounts(req.user.userId, payload);
 
         // Avoid wiping fields on partial updates (e.g. status-only accept/reject).
         const update = Object.fromEntries(
@@ -429,8 +432,16 @@ router.post('/:id/convert', auth, requireEmailVerified, validateObjectId(), asyn
             tax: quotation.tax ?? 0,
             total: quotation.total ?? 0,
             sourceQuotationId: quotation._id,
+            exchangeRate: quotation.exchangeRate,
+            baseCurrency: quotation.baseCurrency,
+            baseSubtotal: quotation.baseSubtotal,
+            baseTax: quotation.baseTax,
+            baseDiscount: quotation.baseDiscount,
+            baseTotal: quotation.baseTotal,
+            baseAmountPaid: 0,
         };
         await applyClientSnapshot(invoicePayload, req.user.userId);
+        await attachDocumentBaseAmounts(req.user.userId, invoicePayload);
         const invoice = await Invoice.create(invoicePayload);
 
         const tokenPayload = { status: 'pending' };

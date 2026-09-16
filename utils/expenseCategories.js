@@ -16,6 +16,11 @@ export const EXPENSE_CATEGORIES = [
     { id: 'supplies', label: 'Supplies' },
 ];
 
+/** Presets users can pick when adding an expense. Salaries is recorded via Staff payroll. */
+export const MANUAL_EXPENSE_CATEGORIES = EXPENSE_CATEGORIES.filter(
+    (category) => category.id !== 'salaries'
+);
+
 const LEGACY_CATEGORY_LABELS = {
     other: 'Other',
 };

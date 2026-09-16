@@ -1,6 +1,7 @@
 import PurchaseOrder from '../models/PurchaseOrder.js';
 import Supplier from '../models/Supplier.js';
 import Product from '../models/Product.js';
+import { getBusinessCurrencyForUser, projectDocIntoBooks } from './documentCurrency.js';
 
 const OPEN_STATUSES = new Set(['sent', 'partial']);
 const COUNTED_STATUSES = new Set(['sent', 'partial', 'received']);
@@ -72,6 +73,7 @@ export async function getSupplierActivity(userId, supplierId) {
         .sort({ date: -1, createdAt: -1 })
         .lean();
 
+    const businessCurrency = await getBusinessCurrencyForUser(userId);
     let openOrders = 0;
     let receivedOrders = 0;
     let cancelledOrders = 0;
@@ -84,12 +86,13 @@ export async function getSupplierActivity(userId, supplierId) {
         if (status === 'received') receivedOrders += 1;
         if (status === 'cancelled') cancelledOrders += 1;
 
-        if (COUNTED_STATUSES.has(status)) {
-            totalOrderedValue += Number(order.total) || 0;
+        const booksOrder = projectDocIntoBooks(order, businessCurrency);
+        if (COUNTED_STATUSES.has(status) && booksOrder) {
+            totalOrderedValue += Number(booksOrder.total) || 0;
         }
 
-        if (COUNTED_STATUSES.has(status) && Array.isArray(order.items)) {
-            for (const item of order.items) {
+        if (COUNTED_STATUSES.has(status) && booksOrder && Array.isArray(booksOrder.items)) {
+            for (const item of booksOrder.items) {
                 upsertProductRollup(productRollup, item, order.date || null);
             }
         }

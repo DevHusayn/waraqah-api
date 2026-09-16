@@ -1,13 +1,7 @@
 import { sanitizeInvoicePayload } from './invoiceValidation.js';
 import { getNextReceiptNumber } from './receiptNumber.js';
-import {
-    roundMoney,
-    MONEY_EPS,
-    sanitizePaymentPayload,
-    getInvoiceBalanceDue,
-    sumPayments,
-    ensurePaymentLedger,
-} from './invoicePayments.js';
+import { roundMoney, MONEY_EPS, sanitizePaymentPayload, getInvoiceBalanceDue, sumPayments, ensurePaymentLedger } from './invoicePayments.js';
+import { syncDocumentBaseAmountPaid } from './documentCurrency.js';
 
 const PAYMENT_METHODS = ['cash', 'bank_transfer', 'pos', 'card', 'online_gateway'];
 const DRAFT = 'draft';
@@ -159,6 +153,7 @@ export function applyReceiptPaymentLedger(doc, { amount } = {}) {
         },
     ];
     doc.amountPaid = paidAmount;
+    syncDocumentBaseAmountPaid(doc);
     return doc;
 }
 
@@ -220,6 +215,7 @@ export function applyReceiptPayment(receipt, paymentInput) {
     receipt.paymentMethod = payment.method;
     receipt.datePaid = payment.date;
     receipt.status = PAID;
+    syncDocumentBaseAmountPaid(receipt);
 
     return {
         becameFullyPaid: amountPaid + MONEY_EPS >= total && total >= 0,

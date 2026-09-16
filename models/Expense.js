@@ -21,6 +21,15 @@ const expenseSchema = new mongoose.Schema(
             ref: 'Expense',
             default: null,
         },
+        staffId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'Staff',
+            default: null,
+        },
+        payrollPeriod: {
+            type: String,
+            default: null,
+        },
     },
     { timestamps: true }
 );
@@ -29,5 +38,17 @@ expenseSchema.index({ userId: 1, date: -1 });
 expenseSchema.index({ userId: 1, createdAt: -1 });
 expenseSchema.index({ isRecurring: 1, recurringNextDate: 1 });
 expenseSchema.index({ recurringSourceId: 1 });
+expenseSchema.index({ userId: 1, staffId: 1 });
+expenseSchema.index(
+    { userId: 1, staffId: 1, payrollPeriod: 1 },
+    {
+        unique: true,
+        name: 'userId_staffId_payrollPeriod_unique',
+        partialFilterExpression: {
+            staffId: { $type: 'objectId' },
+            payrollPeriod: { $type: 'string' },
+        },
+    }
+);
 
 export default mongoose.model('Expense', expenseSchema);

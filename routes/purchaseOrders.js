@@ -30,6 +30,7 @@ import {
     sanitizeReceivePayload,
 } from '../utils/purchaseOrderValidation.js';
 import { receivePurchaseOrderLines } from '../utils/purchaseOrderReceive.js';
+import { attachDocumentBaseAmounts } from '../utils/documentCurrency.js';
 
 const router = express.Router();
 
@@ -224,6 +225,7 @@ router.post('/', auth, asyncHandler(async (req, res) => {
     try {
         const normalized = normalizePurchaseOrderPayload(req.body, { isCreate: true });
         const payload = await assignPurchaseOrderNumber(normalized, null, req.user.userId);
+        await attachDocumentBaseAmounts(req.user.userId, payload);
         const purchaseOrder = await PurchaseOrder.create({
             ...payload,
             userId: req.user.userId,
@@ -261,6 +263,7 @@ router.put('/:id', auth, validateObjectId(), asyncHandler(async (req, res) => {
 
         const normalized = normalizePurchaseOrderPayload(req.body, { existing });
         const payload = await assignPurchaseOrderNumber(normalized, existing, req.user.userId);
+        await attachDocumentBaseAmounts(req.user.userId, payload);
 
         existing.set(payload);
         await existing.save();

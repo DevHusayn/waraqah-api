@@ -15,6 +15,7 @@ export default function MonthlyStatementEmail({
     periodLabel,
     totals,
     statementsUrl,
+    currency = 'NGN',
 }) {
     const greetingName = ownerName?.trim() || 'there';
 
@@ -36,7 +37,7 @@ export default function MonthlyStatementEmail({
             React.createElement(
                 Text,
                 { style: emailStyles.detailValue },
-                formatCurrency(totals.total, 'NGN'),
+                formatCurrency(totals.total, currency),
             ),
             React.createElement(Text, { style: emailStyles.detailLabel }, 'Documents in period'),
             React.createElement(

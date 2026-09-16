@@ -199,6 +199,80 @@ export function sanitizeSupplierUpdates(body) {
     return updates;
 }
 
+export function sanitizeStaffSalary(value) {
+    const amount = Number(value);
+    if (!Number.isFinite(amount) || amount <= 0) {
+        const err = new Error('Salary must be greater than zero.');
+        err.status = 400;
+        throw err;
+    }
+    return Math.round(amount * 100) / 100;
+}
+
+export function sanitizeStaffPayload(body) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        const err = new Error('Invalid staff payload.');
+        err.status = 400;
+        throw err;
+    }
+
+    const name = sanitizePlainText(body.name, 200);
+    if (!name) {
+        const err = new Error('Staff name is required.');
+        err.status = 400;
+        throw err;
+    }
+
+    const role = sanitizePlainText(body.role, 80);
+    if (!role) {
+        const err = new Error('Staff role is required.');
+        err.status = 400;
+        throw err;
+    }
+
+    return {
+        name,
+        role,
+        salary: sanitizeStaffSalary(body.salary),
+        isActive: body.isActive === undefined ? true : Boolean(body.isActive),
+    };
+}
+
+export function sanitizeStaffUpdates(body) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        const err = new Error('Invalid staff payload.');
+        err.status = 400;
+        throw err;
+    }
+
+    const updates = {};
+    if (body.name !== undefined) {
+        const name = sanitizePlainText(body.name, 200);
+        if (!name) {
+            const err = new Error('Staff name is required.');
+            err.status = 400;
+            throw err;
+        }
+        updates.name = name;
+    }
+    if (body.role !== undefined) {
+        const role = sanitizePlainText(body.role, 80);
+        if (!role) {
+            const err = new Error('Staff role is required.');
+            err.status = 400;
+            throw err;
+        }
+        updates.role = role;
+    }
+    if (body.salary !== undefined) {
+        updates.salary = sanitizeStaffSalary(body.salary);
+    }
+    if (body.isActive !== undefined) {
+        updates.isActive = Boolean(body.isActive);
+    }
+    return updates;
+}
+
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 export function sanitizeExpenseDate(value) {

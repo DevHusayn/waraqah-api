@@ -5,20 +5,31 @@
 export function formatCurrency(amount, currency = 'NGN') {
     const numericAmount = Number(amount);
     if (!Number.isFinite(numericAmount)) return String(amount ?? '');
+    const code = String(currency || 'NGN').trim().toUpperCase() || 'NGN';
 
     try {
-        return new Intl.NumberFormat('en-NG', {
+        return new Intl.NumberFormat('en', {
             style: 'currency',
-            currency: currency || 'NGN',
+            currency: code,
+            currencyDisplay: 'narrowSymbol',
             minimumFractionDigits: 0,
             maximumFractionDigits: 2,
         }).format(numericAmount);
     } catch {
-        const formatted = numericAmount.toLocaleString('en-NG', {
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 2,
-        });
-        return `${currency || 'NGN'} ${formatted}`;
+        try {
+            return new Intl.NumberFormat('en', {
+                style: 'currency',
+                currency: code,
+                currencyDisplay: 'narrowSymbol',
+                minimumFractionDigits: 0,
+            }).format(numericAmount);
+        } catch {
+            const formatted = numericAmount.toLocaleString('en', {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2,
+            });
+            return `${code} ${formatted}`;
+        }
     }
 }
 

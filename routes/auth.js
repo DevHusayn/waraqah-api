@@ -13,6 +13,7 @@ import {
     PLANS,
     toBusinessInfoResponse,
 } from '../utils/businessInfoHelpers.js';
+import { DEFAULT_COUNTRY, APP_CURRENCY, normalizeCountry, normalizeCurrency } from '../utils/locale.js';
 import Invoice from '../models/Invoice.js';
 import Client from '../models/Client.js';
 import {
@@ -70,6 +71,7 @@ import {
 import Quotation from '../models/Quotation.js';
 import Product from '../models/Product.js';
 import Payment from '../models/Payment.js';
+import Staff from '../models/Staff.js';
 import AdminNote from '../models/AdminNote.js';
 import UserActivityLog from '../models/UserActivityLog.js';
 import DeletedUser from '../models/DeletedUser.js';
@@ -241,6 +243,7 @@ router.delete('/admin/users/:id', auth, requireAdmin, validateObjectId(), async 
         await Invoice.deleteMany({ userId: req.params.id });
         await Client.deleteMany({ userId: req.params.id });
         await Payment.deleteMany({ userId: req.params.id });
+        await Staff.deleteMany({ userId: req.params.id });
         res.json({ message: 'User deleted' });
     } catch (err) {
         return sendServerError(res, err);
@@ -313,12 +316,19 @@ router.get('/admin/users/export', auth, requireAdmin, async (req, res) => {
 
 function sanitizeRegisterBusinessInfo(businessInfo) {
     if (!businessInfo || typeof businessInfo !== 'object') return {};
+    const country = businessInfo.country
+        ? normalizeCountry(businessInfo.country)
+        : DEFAULT_COUNTRY;
     return {
         name: sanitizePlainText(businessInfo.name, 200),
         address: sanitizePlainText(businessInfo.address, 500),
         email: businessInfo.email ? sanitizeOptionalEmail(businessInfo.email) : '',
         phone: sanitizePlainText(businessInfo.phone, 50),
         website: sanitizePlainText(businessInfo.website, 200),
+        country,
+        defaultCurrency: businessInfo.defaultCurrency
+            ? normalizeCurrency(businessInfo.defaultCurrency)
+            : defaultBusinessInfoFields.defaultCurrency || APP_CURRENCY,
         brandColor: sanitizeHexColor(
             businessInfo.brandColor,
             defaultBusinessInfoFields.brandColor

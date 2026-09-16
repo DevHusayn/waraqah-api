@@ -76,6 +76,7 @@ import { isUserPremium } from '../utils/premiumAccess.js';
 import { stoppedRecurringFields } from '../utils/recurrence.js';
 import { applyClientSnapshot, DOCUMENT_CLIENT_SEARCH_FIELDS } from '../utils/clientSnapshot.js';
 import { attachClientNamesToDocuments, attachClientNamesToDocument } from '../utils/attachClientNames.js';
+import { attachDocumentBaseAmounts } from '../utils/documentCurrency.js';
 
 const router = express.Router();
 
@@ -301,6 +302,9 @@ router.post('/', auth, requireEmailVerified, async (req, res) => {
         );
         attachPublicTokenIfNeeded(payload);
         await attachItemCostSnapshots(req.user.userId, payload);
+        await attachDocumentBaseAmounts(req.user.userId, payload, {
+            amountPaid: payload.amountPaid || 0,
+        });
         const invoice = await Invoice.create({
             ...payload,
             userId: req.user.userId,
@@ -449,6 +453,9 @@ router.put('/:id', auth, requireEmailVerified, validateObjectId(), async (req, r
         }
 
         await attachItemCostSnapshots(req.user.userId, payload);
+        await attachDocumentBaseAmounts(req.user.userId, payload, {
+            amountPaid: payload.amountPaid ?? existing.amountPaid ?? 0,
+        });
 
         const invoice = await Invoice.findOneAndUpdate(
             { _id: req.params.id, userId: req.user.userId },

@@ -26,6 +26,11 @@ import {
     previousAnalyticsPeriod,
     resolveAnalyticsPeriod,
 } from './timezone.js';
+import {
+    DOCUMENT_BOOKS_FIELDS,
+    getBusinessCurrencyForUser,
+    projectDocsIntoBooks,
+} from './documentCurrency.js';
 
 const DASHBOARD_CACHE_TTL_MS = 30_000;
 const OVERDUE_LIMIT = 20;
@@ -89,10 +94,11 @@ export function computePaidRevenue(doc) {
 async function getInvoiceRevenueStats(userId) {
     const uid = toUserObjectId(userId);
     const docs = await Invoice.find({ userId: uid, status: { $ne: 'draft' } })
-        .select('documentType status total amountPaid')
+        .select(`documentType status total amountPaid ${DOCUMENT_BOOKS_FIELDS}`)
         .lean();
+    const businessCurrency = await getBusinessCurrencyForUser(userId);
 
-    return computeRevenueStatsFromDocs(docs);
+    return computeRevenueStatsFromDocs(projectDocsIntoBooks(docs, businessCurrency));
 }
 
 async function attachClientNames(docs) {
@@ -137,7 +143,7 @@ export async function getDashboardForUser(userId, { summaryYear, summaryMonth, p
         totalReceipts,
     ] = await Promise.all([
         Invoice.find(nonDraftFilter)
-            .select('date dueDate status total amountPaid documentType items discount discountType discountValue')
+            .select(`date dueDate status total amountPaid documentType items discount discountType discountValue ${DOCUMENT_BOOKS_FIELDS}`)
             .lean(),
         getBusinessTimezone(userId),
         Invoice.find({ ...nonDraftFilter, ...INVOICE_ONLY_FILTER })
@@ -186,20 +192,22 @@ export async function getDashboardForUser(userId, { summaryYear, summaryMonth, p
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
         .slice(0, 5);
 
-    const revenueStats = computeRevenueStatsFromDocs(analyticsDocs);
-    const analytics = buildDashboardAnalyticsFromDocs(analyticsDocs, { timeZone });
+    const productCostById = await loadProductCostMap(userId, analyticsDocs);
+    const businessCurrency = await getBusinessCurrencyForUser(userId);
+    const booksDocs = projectDocsIntoBooks(analyticsDocs, businessCurrency);
+
+    const revenueStats = computeRevenueStatsFromDocs(booksDocs);
+    const analytics = buildDashboardAnalyticsFromDocs(booksDocs, { timeZone });
     const resolvedPeriod =
         period ||
         resolveAnalyticsPeriod({ summaryYear, summaryMonth }, timeZone);
-    const periodSummary = buildPeriodSummaryFromDocs(analyticsDocs, {
+    const periodSummary = buildPeriodSummaryFromDocs(booksDocs, {
         period: resolvedPeriod,
         timeZone,
     });
 
-    const productCostById = await loadProductCostMap(userId, analyticsDocs);
-
     const currentProfit = computePeriodProfitFromDocs(
-        analyticsDocs,
+        booksDocs,
         resolvedPeriod,
         null,
         timeZone,
@@ -208,7 +216,7 @@ export async function getDashboardForUser(userId, { summaryYear, summaryMonth, p
     const previousPeriod = previousAnalyticsPeriod(resolvedPeriod);
     const previousProfit = previousPeriod
         ? computePeriodProfitFromDocs(
-              analyticsDocs,
+              booksDocs,
               previousPeriod,
               null,
               timeZone,

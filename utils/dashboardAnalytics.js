@@ -5,6 +5,11 @@ import { computePaidRevenue, computePendingBalance } from './dashboardStats.js';
 import { getYearMonthInTimezone, normalizeTimezone, dateMatchesPeriod, previousAnalyticsPeriod, formatAnalyticsPeriodLabel, getDatePartsInTimezone, toDateInputValue } from './timezone.js';
 import { isPartialReceiptDoc } from './receiptValidation.js';
 import { getReceiptPaymentStatusCounts } from './receiptCounts.js';
+import {
+    DOCUMENT_BOOKS_FIELDS,
+    getBusinessCurrencyForUser,
+    projectDocsIntoBooks,
+} from './documentCurrency.js';
 
 const DEFAULT_TREND_MONTHS = 12;
 
@@ -378,10 +383,16 @@ export function buildPeriodSummaryFromDocs(docs, { year, month, timeZone, period
 export async function getPeriodSummaryWithComparison(userId, { year, month, timeZone, period } = {}) {
     const uid = toUserObjectId(userId);
     const docs = await Invoice.find({ userId: uid, status: { $ne: 'draft' } })
-        .select('date dueDate status total amountPaid documentType')
+        .select(`date dueDate status total amountPaid documentType ${DOCUMENT_BOOKS_FIELDS}`)
         .lean();
+    const businessCurrency = await getBusinessCurrencyForUser(userId);
 
-    return buildPeriodSummaryFromDocs(docs, { year, month, timeZone, period });
+    return buildPeriodSummaryFromDocs(projectDocsIntoBooks(docs, businessCurrency), {
+        year,
+        month,
+        timeZone,
+        period,
+    });
 }
 
 export async function getInvoiceStatusCounts(userId, extraMatch = {}) {
@@ -435,10 +446,14 @@ export async function getRevenueTrend(userId, { months = DEFAULT_TREND_MONTHS, t
     const uid = toUserObjectId(userId);
     const tz = normalizeTimezone(timeZone);
     const docs = await Invoice.find({ userId: uid, status: { $ne: 'draft' } })
-        .select('date dueDate status total amountPaid documentType')
+        .select(`date dueDate status total amountPaid documentType ${DOCUMENT_BOOKS_FIELDS}`)
         .lean();
+    const businessCurrency = await getBusinessCurrencyForUser(userId);
 
-    return buildRevenueTrendFromDocs(docs, { months, timeZone: tz });
+    return buildRevenueTrendFromDocs(projectDocsIntoBooks(docs, businessCurrency), {
+        months,
+        timeZone: tz,
+    });
 }
 
 export async function getDashboardAnalytics(userId, { timeZone, months = DEFAULT_TREND_MONTHS, docs } = {}) {
@@ -448,8 +463,12 @@ export async function getDashboardAnalytics(userId, { timeZone, months = DEFAULT
 
     const uid = toUserObjectId(userId);
     const loadedDocs = await Invoice.find({ userId: uid, status: { $ne: 'draft' } })
-        .select('date status total amountPaid documentType')
+        .select(`date status total amountPaid documentType ${DOCUMENT_BOOKS_FIELDS}`)
         .lean();
+    const businessCurrency = await getBusinessCurrencyForUser(userId);
 
-    return buildDashboardAnalyticsFromDocs(loadedDocs, { timeZone, months });
+    return buildDashboardAnalyticsFromDocs(projectDocsIntoBooks(loadedDocs, businessCurrency), {
+        timeZone,
+        months,
+    });
 }

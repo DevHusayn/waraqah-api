@@ -103,6 +103,7 @@ async function sendMonthlyStatements({ forcePeriodKey = null } = {}) {
                     statementsUrl,
                     pdfBuffer,
                     pdfFilename,
+                    currency: businessInfo.defaultCurrency,
                 });
 
                 info.monthlyStatementLastSentFor = periodKey;

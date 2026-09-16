@@ -3,6 +3,7 @@ import { isValidObjectId, sanitizeNumber, sanitizePlainText } from './sanitize.j
 import { getInvoiceAmountPaid } from './invoicePayments.js';
 import { INVOICE_ONLY_FILTER } from './invoiceDocumentFilter.js';
 import { applyRecurringSchedule, sanitizeRecurringEndDate } from './recurrence.js';
+import { isValidCurrencyCode } from './locale.js';
 
 export { INVOICE_ONLY_FILTER };
 
@@ -14,7 +15,6 @@ const PARTIAL = 'partial';
 const CANCELLABLE = ['pending', 'partial', 'overdue'];
 const STATUSES = ['draft', 'pending', 'partial', 'paid', 'overdue', 'cancelled'];
 const RECURRING_FREQUENCIES = ['weekly', 'bi-weekly', 'monthly', 'quarterly', 'yearly'];
-const SUPPORTED_CURRENCIES = ['NGN', 'GHS', 'ZAR', 'KES', 'USD', 'EUR'];
 const MAX_ITEMS = 100;
 const TOTAL_FIELDS = [
     'items',
@@ -25,6 +25,8 @@ const TOTAL_FIELDS = [
     'discount',
     'discountValue',
     'discountType',
+    'currency',
+    'exchangeRate',
 ];
 const ALLOWED_INVOICE_FIELDS = [
     'clientId',
@@ -40,6 +42,7 @@ const ALLOWED_INVOICE_FIELDS = [
     'paymentMethod',
     'datePaid',
     'currency',
+    'exchangeRate',
     'taxRate',
     'discountType',
     'discountValue',
@@ -152,14 +155,19 @@ export function sanitizeInvoicePayload(body) {
         data.currency !== undefined
             ? (() => {
                   const code = sanitizePlainText(data.currency, 8).toUpperCase();
-                  if (!SUPPORTED_CURRENCIES.includes(code)) {
-                      throw validationError(
-                          `Currency must be one of: ${SUPPORTED_CURRENCIES.join(', ')}.`
-                      );
+                  if (!isValidCurrencyCode(code)) {
+                      throw validationError('Please choose a valid currency.');
                   }
                   return code;
               })()
             : undefined;
+    if (data.exchangeRate !== undefined && data.exchangeRate !== null && data.exchangeRate !== '') {
+        data.exchangeRate = sanitizeNumber(data.exchangeRate, {
+            min: 0,
+            max: 1_000_000_000,
+            fallback: NaN,
+        });
+    }
 
     if (data.taxRate !== undefined) {
         data.taxRate = sanitizeNumber(data.taxRate, { min: 0, max: 100, fallback: 0 });

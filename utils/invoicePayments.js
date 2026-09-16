@@ -1,5 +1,6 @@
 import { sanitizeNumber, sanitizePlainText } from './sanitize.js';
 import { todayDateString } from './invoiceOverdue.js';
+import { syncDocumentBaseAmountPaid } from './documentCurrency.js';
 
 const PAYMENT_METHODS = ['cash', 'bank_transfer', 'pos', 'card', 'online_gateway'];
 const PAYABLE_STATUSES = ['pending', 'partial', 'overdue'];
@@ -95,6 +96,7 @@ export function ensurePaymentLedger(invoice) {
 
     invoice.payments = payments;
     invoice.amountPaid = amountPaid;
+    syncDocumentBaseAmountPaid(invoice);
     return invoice;
 }
 
@@ -174,6 +176,7 @@ export function applyInvoicePayment(invoice, paymentInput) {
     invoice.paymentMethod = payment.method;
     invoice.datePaid = payment.date;
     invoice.status = nextStatus;
+    syncDocumentBaseAmountPaid(invoice);
 
     return {
         becamePaid: nextStatus === 'paid',
@@ -203,6 +206,7 @@ export function syncFullPaymentFromMarkPaid(invoice, { paymentMethod, datePaid }
 
     invoice.status = 'paid';
     invoice.amountPaid = roundMoney(invoice.total);
+    syncDocumentBaseAmountPaid(invoice);
     return { becamePaid: true, alreadySettled: true };
 }
 

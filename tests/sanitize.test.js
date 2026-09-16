@@ -6,6 +6,8 @@ import {
     sanitizePlainText,
     sanitizeEmail,
     isValidObjectId,
+    sanitizeStaffPayload,
+    sanitizeStaffUpdates,
 } from '../utils/sanitize.js';
 import { isValidPaystackSignature } from '../services/paystackVerify.js';
 
@@ -38,6 +40,35 @@ test('sanitizeClientPayload coerces injection objects to strings', () => {
 test('isValidObjectId rejects malformed ids', () => {
     assert.equal(isValidObjectId('not-an-id'), false);
     assert.equal(isValidObjectId('507f1f77bcf86cd799439011'), true);
+});
+
+test('sanitizeStaffPayload requires name, role, and a positive salary', () => {
+    const payload = sanitizeStaffPayload({
+        name: '  Adaeze  ',
+        role: ' Designer ',
+        salary: '150000.456',
+    });
+
+    assert.equal(payload.name, 'Adaeze');
+    assert.equal(payload.role, 'Designer');
+    assert.equal(payload.salary, 150000.46);
+    assert.equal(payload.isActive, true);
+});
+
+test('sanitizeStaffPayload rejects a missing role or non-positive salary', () => {
+    assert.throws(
+        () => sanitizeStaffPayload({ name: 'Ada', role: '', salary: 10 }),
+        (err) => err.status === 400
+    );
+    assert.throws(
+        () => sanitizeStaffPayload({ name: 'Ada', role: 'Driver', salary: 0 }),
+        (err) => err.status === 400 && /Salary/.test(err.message)
+    );
+});
+
+test('sanitizeStaffUpdates only includes provided fields', () => {
+    const updates = sanitizeStaffUpdates({ salary: 90, isActive: false });
+    assert.deepEqual(updates, { salary: 90, isActive: false });
 });
 
 test('paystack webhook signature verification', () => {

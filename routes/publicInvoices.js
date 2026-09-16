@@ -59,6 +59,7 @@ function sanitizePublicBusiness(info) {
         paymentBankName: o.paymentBankName || '',
         paymentAccountNumber: o.paymentAccountNumber || '',
         paymentInstructions: o.paymentInstructions || '',
+        defaultDocumentFooter: premium ? (o.defaultDocumentFooter || '') : '',
     };
 }
 

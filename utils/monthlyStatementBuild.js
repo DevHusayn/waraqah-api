@@ -198,5 +198,15 @@ const CURRENCY_SYMBOLS = {
 };
 
 export function getStatementCurrencySymbol(code = 'NGN') {
-    return CURRENCY_SYMBOLS[String(code || 'NGN').toUpperCase()] || CURRENCY_SYMBOLS.NGN;
+    const normalized = String(code || 'NGN').toUpperCase();
+    try {
+        const parts = new Intl.NumberFormat('en', {
+            style: 'currency',
+            currency: normalized,
+            currencyDisplay: 'narrowSymbol',
+        }).formatToParts(0);
+        return parts.find((part) => part.type === 'currency')?.value || normalized;
+    } catch {
+        return CURRENCY_SYMBOLS[normalized] || CURRENCY_SYMBOLS.NGN;
+    }
 }

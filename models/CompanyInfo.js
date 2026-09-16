@@ -8,10 +8,14 @@ const businessInfoSchema = new mongoose.Schema({
     phone: String,
     website: String,
     defaultCurrency: { type: String, default: 'NGN' },
+    /** ISO 3166-1 alpha-2 country used to suggest default currency. */
+    country: { type: String, default: 'NG' },
     /** IANA timezone for business reporting (monthly stats, statements). */
     timezone: { type: String, default: 'Africa/Lagos' },
     taxRate: { type: Number, default: 10 },
     brandColor: { type: String, default: '#16A34A' },
+    /** Premium: default thank-you footer prefilled on new invoices, quotations, and receipts. */
+    defaultDocumentFooter: { type: String, default: '' },
     plan: { type: String, enum: ['free', 'premium'], default: 'free' },
     premiumUntil: { type: Date, default: null },
     subscriptionStatus: {

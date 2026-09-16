@@ -1,5 +1,6 @@
 import { getNextPurchaseOrderNumber } from './purchaseOrderNumber.js';
 import { isValidObjectId, sanitizeNumber, sanitizePlainText } from './sanitize.js';
+import { isValidCurrencyCode } from './locale.js';
 
 export const PO_DRAFT = 'draft';
 export const PO_SENT = 'sent';
@@ -11,7 +12,6 @@ export const PO_STATUSES = [PO_DRAFT, PO_SENT, PO_PARTIAL, PO_RECEIVED, PO_CANCE
 export const PO_RECEIVABLE = [PO_SENT, PO_PARTIAL];
 export const PO_TERMINAL = [PO_RECEIVED, PO_CANCELLED];
 
-const SUPPORTED_CURRENCIES = ['NGN', 'GHS', 'ZAR', 'KES', 'USD', 'EUR'];
 const MAX_ITEMS = 100;
 
 const ALLOWED_PO_FIELDS = [
@@ -22,6 +22,7 @@ const ALLOWED_PO_FIELDS = [
     'notes',
     'status',
     'currency',
+    'exchangeRate',
     'subtotal',
     'total',
 ];
@@ -125,14 +126,19 @@ export function sanitizePurchaseOrderPayload(body, { preserveReceived = false, e
         data.currency !== undefined
             ? (() => {
                   const code = sanitizePlainText(data.currency, 8).toUpperCase();
-                  if (!SUPPORTED_CURRENCIES.includes(code)) {
-                      throw validationError(
-                          `Currency must be one of: ${SUPPORTED_CURRENCIES.join(', ')}.`
-                      );
+                  if (!isValidCurrencyCode(code)) {
+                      throw validationError('Please choose a valid currency.');
                   }
                   return code;
               })()
             : undefined;
+    if (data.exchangeRate !== undefined && data.exchangeRate !== null && data.exchangeRate !== '') {
+        data.exchangeRate = sanitizeNumber(data.exchangeRate, {
+            min: 0,
+            max: 1_000_000_000,
+            fallback: NaN,
+        });
+    }
 
     if (data.subtotal !== undefined) {
         data.subtotal = sanitizeNumber(data.subtotal, { min: 0, max: 1_000_000_000, fallback: 0 });

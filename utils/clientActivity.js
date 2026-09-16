@@ -6,6 +6,11 @@ import { INVOICE_ONLY_FILTER, RECEIPT_ONLY_FILTER } from './invoiceDocumentFilte
 import { computePaidRevenue, computePendingBalance } from './dashboardStats.js';
 import { computePaidRatio, docCountsAsRealizedSale } from './realizedSales.js';
 import { computeDocumentDiscountRatio, roundMoney } from './documentLineMath.js';
+import {
+    DOCUMENT_BOOKS_FIELDS,
+    getBusinessCurrencyForUser,
+    projectDocIntoBooks,
+} from './documentCurrency.js';
 
 function resolveDocumentNumber(doc, documentType) {
     if (documentType === 'quotation') return doc.quotationNumber || '—';
@@ -78,7 +83,7 @@ function addDocumentItemsToRollup(map, doc) {
 }
 
 const DOC_SELECT_FIELDS =
-    'invoiceNumber receiptNumber date status total amountPaid currency items documentType discount discountType discountValue';
+    `invoiceNumber receiptNumber date status total amountPaid currency items documentType discount discountType discountValue ${DOCUMENT_BOOKS_FIELDS}`;
 
 export async function getClientActivity(userId, clientId) {
     const client = await Client.findOne({ _id: clientId, userId }).lean();
@@ -111,13 +116,14 @@ export async function getClientActivity(userId, clientId) {
             clientId,
             status: { $nin: inactiveQuotationStatuses },
         })
-            .select('quotationNumber date status total currency items convertedInvoiceId')
+            .select(`quotationNumber date status total currency items convertedInvoiceId ${DOCUMENT_BOOKS_FIELDS}`)
             .sort({ date: -1, createdAt: -1 })
             .lean(),
     ]);
 
     const documents = [];
     const productRollup = new Map();
+    const businessCurrency = await getBusinessCurrencyForUser(userId);
 
     let totalInvoiced = 0;
     let totalPaid = 0;
@@ -129,19 +135,25 @@ export async function getClientActivity(userId, clientId) {
     for (const doc of invoices) {
         documents.push(mapDocumentRow(doc, 'invoice'));
         invoiceCount += 1;
-        totalInvoiced += roundMoney(doc.total);
-        totalPaid += computePaidRevenue(doc);
-        outstanding += computePendingBalance(doc);
-        addDocumentItemsToRollup(productRollup, doc);
+        const booksDoc = projectDocIntoBooks(doc, businessCurrency);
+        if (booksDoc) {
+            totalInvoiced += roundMoney(booksDoc.total);
+            totalPaid += computePaidRevenue(booksDoc);
+            outstanding += computePendingBalance(booksDoc);
+            addDocumentItemsToRollup(productRollup, booksDoc);
+        }
     }
 
     for (const doc of receipts) {
         documents.push(mapDocumentRow(doc, 'receipt'));
         receiptCount += 1;
-        totalInvoiced += roundMoney(doc.total);
-        totalPaid += computePaidRevenue(doc);
-        outstanding += computePendingBalance(doc);
-        addDocumentItemsToRollup(productRollup, doc);
+        const booksDoc = projectDocIntoBooks(doc, businessCurrency);
+        if (booksDoc) {
+            totalInvoiced += roundMoney(booksDoc.total);
+            totalPaid += computePaidRevenue(booksDoc);
+            outstanding += computePendingBalance(booksDoc);
+            addDocumentItemsToRollup(productRollup, booksDoc);
+        }
     }
 
     for (const doc of quotations) {

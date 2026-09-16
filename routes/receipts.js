@@ -45,6 +45,7 @@ import {
 import { countListSummary, buildSummaryResponse, resolveListSummaryOptions, isSummaryOnlyRequest, shouldFetchListSummary } from '../utils/listSummary.js';
 import { sendReceiptListExport } from '../utils/receiptListExport.js';
 import { applyClientSnapshot, DOCUMENT_CLIENT_SEARCH_FIELDS } from '../utils/clientSnapshot.js';
+import { attachDocumentBaseAmounts } from '../utils/documentCurrency.js';
 import { attachClientNamesToDocuments } from '../utils/attachClientNames.js';
 import {
     applyInventoryTransition,
@@ -223,6 +224,9 @@ router.post('/', auth, requireEmailVerified, async (req, res) => {
             attachPublicTokenIfNeeded(payload);
         }
         await attachItemCostSnapshots(req.user.userId, payload);
+        await attachDocumentBaseAmounts(req.user.userId, payload, {
+            amountPaid: payload.amountPaid || 0,
+        });
         const receipt = await Invoice.create({
             ...payload,
             userId: req.user.userId,
@@ -343,6 +347,9 @@ router.put('/:id', auth, requireEmailVerified, validateObjectId(), async (req, r
         }
 
         await attachItemCostSnapshots(req.user.userId, payload);
+        await attachDocumentBaseAmounts(req.user.userId, payload, {
+            amountPaid: payload.amountPaid ?? existing.amountPaid ?? 0,
+        });
 
         const update = Object.fromEntries(
             Object.entries(payload).filter(([, value]) => value !== undefined)

@@ -11,6 +11,7 @@ export async function sendMonthlyStatementEmail({
     statementsUrl,
     pdfBuffer,
     pdfFilename,
+    currency = 'NGN',
 }) {
     return sendEmail({
         to,
@@ -21,11 +22,12 @@ export async function sendMonthlyStatementEmail({
             periodLabel,
             totals,
             statementsUrl,
+            currency,
         }),
         text: [
             `Your ${periodLabel} billing statement is attached.`,
             '',
-            `Total billed: ${formatCurrency(totals.total, 'NGN')}`,
+            `Total billed: ${formatCurrency(totals.total, currency)}`,
             `Documents in period: ${totals.documentCount}`,
             '',
             `View in Waraqah: ${statementsUrl}`,

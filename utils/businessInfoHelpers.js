@@ -1,5 +1,6 @@
 import { sanitizePlainText, sanitizeOptionalEmail, sanitizeHexColor, sanitizeNumber, sanitizeDataUrl } from './sanitize.js';
 import { normalizeTimezone } from './timezone.js';
+import { APP_CURRENCY, DEFAULT_COUNTRY, assertValidCountry, assertValidCurrency, normalizeCountry, normalizeCurrency } from './locale.js';
 
 export const PLANS = {
     FREE: 'free',
@@ -37,8 +38,11 @@ const ALLOWED_UPDATE_FIELDS = [
     'phone',
     'website',
     'timezone',
+    'country',
+    'defaultCurrency',
     'taxRate',
     'brandColor',
+    'defaultDocumentFooter',
     'businessLogo',
     'companyLogoUrl',
     'companyLogoAvatarUrl',
@@ -75,6 +79,7 @@ const TEXT_LIMITS = {
     paymentBankName: 120,
     paymentAccountNumber: 40,
     paymentInstructions: 1000,
+    defaultDocumentFooter: 500,
 };
 
 const MAX_ASSET_BYTES = 500 * 1024;
@@ -168,6 +173,17 @@ export function pickAllowedBusinessUpdates(body, { allowPlan = false, premium = 
         updates.brandColor = sanitizeHexColor(updates.brandColor);
     }
 
+    if (updates.defaultDocumentFooter !== undefined) {
+        if (!premium) {
+            delete updates.defaultDocumentFooter;
+        } else {
+            updates.defaultDocumentFooter = sanitizePlainText(
+                updates.defaultDocumentFooter,
+                TEXT_LIMITS.defaultDocumentFooter
+            );
+        }
+    }
+
     if (updates.taxRate !== undefined) {
         updates.taxRate = sanitizeNumber(updates.taxRate, { min: 0, max: 100, fallback: 10 });
     }
@@ -200,13 +216,20 @@ export function pickAllowedBusinessUpdates(body, { allowPlan = false, premium = 
         updates.timezone = normalizeTimezone(updates.timezone);
     }
 
+    if (updates.country !== undefined) {
+        updates.country = assertValidCountry(updates.country);
+    }
+
+    if (updates.defaultCurrency !== undefined) {
+        updates.defaultCurrency = assertValidCurrency(updates.defaultCurrency);
+    }
+
     for (const key of ['paymentAccountName', 'paymentBankName', 'paymentAccountNumber', 'paymentInstructions']) {
         if (updates[key] !== undefined) {
             updates[key] = sanitizePlainText(updates[key], TEXT_LIMITS[key]);
         }
     }
 
-    updates.defaultCurrency = 'NGN';
     return updates;
 }
 
@@ -263,9 +286,11 @@ export function toBusinessInfoResponse(doc, { includeAssets = true } = {}) {
         phone: o.phone || '',
         website: o.website || '',
         timezone: normalizeTimezone(o.timezone),
-        defaultCurrency: 'NGN',
+        country: normalizeCountry(o.country),
+        defaultCurrency: normalizeCurrency(o.defaultCurrency),
         taxRate: typeof o.taxRate === 'number' ? o.taxRate : 10,
         brandColor: o.brandColor || '#16A34A',
+        defaultDocumentFooter: premium ? (o.defaultDocumentFooter || '') : '',
         plan,
         premiumUntil: premium && o.premiumUntil ? o.premiumUntil : null,
         subscriptionStatus: o.subscriptionStatus || null,
@@ -325,9 +350,11 @@ export const defaultBusinessInfoFields = {
     phone: '',
     website: '',
     timezone: 'Africa/Lagos',
-    defaultCurrency: 'NGN',
+    country: DEFAULT_COUNTRY,
+    defaultCurrency: APP_CURRENCY,
     taxRate: 10,
     brandColor: '#16A34A',
+    defaultDocumentFooter: '',
     plan: PLANS.FREE,
     businessLogo: '',
     companyLogoUrl: '',
