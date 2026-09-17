@@ -36,6 +36,19 @@ export const ADMIN_MESSAGE_TEMPLATES = [
         actionLabel: '',
     },
     {
+        id: 'onboarding',
+        label: 'Onboarding',
+        subject: "Let's get your Waraqah workspace set up",
+        preview: "We'd love to help you set up your business and get the most out of Waraqah.",
+        body: [
+            "We noticed that you recently registered on Waraqah. We'd love to help you set up your business properly and show you how to get the best out of Waraqah.",
+            "If you don't mind sparing a few minutes, we'd be happy to guide you through the setup so you can start using Waraqah for your business today.",
+            'Looking forward to helping you get started.',
+        ].join('\n\n'),
+        actionPreset: 'dashboard',
+        actionLabel: 'Go to dashboard',
+    },
+    {
         id: 'we-miss-you',
         label: 'We miss you',
         subject: 'Your Waraqah workspace is waiting',

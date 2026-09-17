@@ -198,6 +198,7 @@ test('listAdminMessageTemplates includes the follow-up drafts', () => {
     const ids = listAdminMessageTemplates().map((template) => template.id);
     assert.deepEqual(ids, [
         'blank',
+        'onboarding',
         'we-miss-you',
         'finish-setup',
         'try-premium',
@@ -205,6 +206,15 @@ test('listAdminMessageTemplates includes the follow-up drafts', () => {
         'billing-help',
         'need-a-hand',
     ]);
+});
+
+test('applyAdminMessageTemplate fills onboarding with a dashboard button', () => {
+    const applied = applyAdminMessageTemplate('onboarding', { firstName: 'Ada Lovelace' });
+    assert.equal(applied.templateId, 'onboarding');
+    assert.equal(applied.subject, "Let's get your Waraqah workspace set up");
+    assert.equal(applied.actionPreset, 'dashboard');
+    assert.equal(applied.actionLabel, 'Go to dashboard');
+    assert.match(applied.body, /recently registered on Waraqah/);
 });
 
 test('applyAdminMessageTemplate fills we-miss-you and a dashboard button', () => {
