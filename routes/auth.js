@@ -40,7 +40,14 @@ import {
     notifyPremiumGrantedByAdmin,
 } from '../src/emails/helpers/premiumNotifications.js';
 import { EMAIL_VERIFICATION_EXPIRY_HOURS } from '../src/emails/config.js';
-import { isStrongPassword, PASSWORD_REQUIREMENTS_MESSAGE } from '../utils/passwordValidation.js';
+import {
+    isStrongPassword,
+    PASSWORD_REQUIREMENTS_MESSAGE,
+    canChangePassword,
+    changePasswordUnavailableMessage,
+    validateChangePasswordPayload,
+    CURRENT_PASSWORD_INCORRECT_MESSAGE,
+} from '../utils/passwordValidation.js';
 import { createPasswordResetToken, hashPasswordResetToken } from '../utils/resetToken.js';
 import { sendServerError } from '../utils/apiError.js';
 import { JWT_EXPIRY } from '../utils/jwtConfig.js';
@@ -49,6 +56,7 @@ import {
     registerLimiter,
     forgotPasswordLimiter,
     resetPasswordLimiter,
+    changePasswordLimiter,
     adminEmailLimiter,
 } from '../middleware/rateLimits.js';
 import {
@@ -571,6 +579,41 @@ router.post('/reset-password/:token', resetPasswordLimiter, async (req, res) => 
     } catch (err) {
         console.error('Reset-password error:', err);
         res.status(500).json({ message: 'Something went wrong. Please try again.' });
+    }
+});
+
+// Change password while signed in
+router.post('/change-password', auth, changePasswordLimiter, async (req, res) => {
+    try {
+        const payloadError = validateChangePasswordPayload(req.body);
+        if (payloadError) {
+            return res.status(payloadError.status).json({ message: payloadError.message });
+        }
+
+        const user = await User.findById(req.user.userId);
+        if (!user) {
+            return res.status(401).json({ message: 'Not authenticated' });
+        }
+
+        if (!canChangePassword(user)) {
+            return res.status(400).json({ message: changePasswordUnavailableMessage(user) });
+        }
+
+        const match = await bcrypt.compare(req.body.currentPassword, user.password);
+        if (!match) {
+            return res.status(400).json({ message: CURRENT_PASSWORD_INCORRECT_MESSAGE });
+        }
+
+        user.password = await bcrypt.hash(req.body.newPassword, 10);
+        user.passwordResetToken = undefined;
+        user.passwordResetExpires = undefined;
+        user.failedLoginAttempts = 0;
+        user.lockUntil = undefined;
+        await user.save();
+
+        return res.json({ message: 'Your password has been updated.' });
+    } catch (err) {
+        return sendServerError(res, err);
     }
 });
 

@@ -149,6 +149,13 @@ export const resetPasswordLimiter = buildLimiter({
     ipOnly: true,
 });
 
+export const changePasswordLimiter = buildLimiter({
+    windowMs: FIFTEEN_MINUTES,
+    max: 10,
+    message: 'Too many password change attempts. Please try again later.',
+    prefix: 'change-password',
+});
+
 /** @deprecated Webhook is not rate-limited; Paystack signature verification is the security boundary. */
 export const webhookLimiter = buildLimiter({
     windowMs: 60 * 1000,
