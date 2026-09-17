@@ -6,6 +6,9 @@ import {
     exchangeRateForBooks,
     projectDocIntoBooks,
     projectDocsIntoBooks,
+    rebaseDocumentBooks,
+    correctDocumentBooksRate,
+    booksRebaseCorrectionFactor,
 } from '../utils/documentCurrency.js';
 import { computePeriodSummaryFromDocs } from '../utils/dashboardAnalytics.js';
 
@@ -92,4 +95,86 @@ test('converted foreign documents contribute naira to period summary', () => {
 test('computeBaseAmounts rounds to cents', () => {
     const base = computeBaseAmounts({ total: 10.555, exchangeRate: 2 });
     assert.equal(base.baseTotal, 21.11);
+});
+
+test('rebaseDocumentBooks converts matching books into the new currency', () => {
+    const patch = rebaseDocumentBooks(
+        {
+            currency: 'NGN',
+            exchangeRate: 1,
+            baseCurrency: 'NGN',
+            subtotal: 1500000,
+            tax: 0,
+            discount: 0,
+            total: 1500000,
+            amountPaid: 500000,
+            baseTotal: 1500000,
+            baseAmountPaid: 500000,
+            items: [{ description: 'Widget', quantity: 1, rate: 1500000, unitCost: 900000 }],
+        },
+        { fromCurrency: 'NGN', toCurrency: 'USD', rate: 0.00067, kind: 'invoice' }
+    );
+    assert.equal(patch.baseCurrency, 'USD');
+    assert.equal(patch.exchangeRate, 0.00067);
+    assert.equal(patch.baseTotal, 1005);
+    assert.equal(patch.items[0].unitCost, 603);
+    assert.equal(patch.items[0].rate, 1500000);
+});
+
+test('rebaseDocumentBooks snaps invoices already in the new currency', () => {
+    const patch = rebaseDocumentBooks(
+        {
+            currency: 'USD',
+            exchangeRate: 1500,
+            baseCurrency: 'NGN',
+            total: 10,
+            amountPaid: 10,
+            baseTotal: 15000,
+            items: [{ description: 'Widget', quantity: 1, rate: 10, unitCost: 6000 }],
+        },
+        { fromCurrency: 'NGN', toCurrency: 'USD', rate: 0.00067, kind: 'invoice' }
+    );
+    assert.equal(patch.exchangeRate, 1);
+    assert.equal(patch.baseTotal, 10);
+    assert.equal(patch.items[0].unitCost, 4.02);
+});
+
+test('rebaseDocumentBooks compounds a third currency into the new books', () => {
+    const patch = rebaseDocumentBooks(
+        {
+            currency: 'EUR',
+            exchangeRate: 1600,
+            baseCurrency: 'NGN',
+            total: 10,
+            baseTotal: 16000,
+        },
+        { fromCurrency: 'NGN', toCurrency: 'USD', rate: 0.00067 }
+    );
+    assert.equal(patch.exchangeRate, 1.072);
+    assert.equal(patch.baseTotal, 10.72);
+});
+
+test('correctDocumentBooksRate restates NGN books after a rate typo', () => {
+    const patch = correctDocumentBooksRate(
+        {
+            currency: 'NGN',
+            exchangeRate: 0.00067,
+            baseCurrency: 'USD',
+            subtotal: 1500000,
+            tax: 0,
+            discount: 0,
+            total: 1500000,
+            amountPaid: 500000,
+            baseTotal: 1005,
+            items: [{ description: 'Widget', quantity: 1, rate: 1500000, unitCost: 603 }],
+        },
+        { fromCurrency: 'NGN', toCurrency: 'USD', oldRate: 0.00067, newRate: 0.0008, kind: 'invoice' }
+    );
+    assert.equal(patch.exchangeRate, 0.0008);
+    assert.equal(patch.baseTotal, 1200);
+    assert.equal(patch.items[0].unitCost, 720);
+});
+
+test('booksRebaseCorrectionFactor is 1 when the rate is unchanged', () => {
+    assert.equal(booksRebaseCorrectionFactor(0.00067, 0.00067), 1);
 });

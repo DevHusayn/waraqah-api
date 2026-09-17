@@ -326,6 +326,10 @@ export function toBusinessInfoResponse(doc, { includeAssets = true } = {}) {
         allowOverselling: Boolean(o.allowOverselling),
         autoUpdateCostFromPO: Boolean(o.autoUpdateCostFromPO),
         autoEmailMonthlyStatements: o.autoEmailMonthlyStatements !== false,
+        booksRebasedAt: o.booksRebasedAt || null,
+        booksRebaseFrom: o.booksRebaseFrom || null,
+        booksRebaseTo: o.booksRebaseTo || null,
+        booksRebaseRate: typeof o.booksRebaseRate === 'number' ? o.booksRebaseRate : null,
     };
 }
 

@@ -171,3 +171,166 @@ export function projectDocIntoBooks(doc, businessCurrency = APP_CURRENCY) {
 export function projectDocsIntoBooks(docs, businessCurrency = APP_CURRENCY) {
     return (docs || []).map((doc) => projectDocIntoBooks(doc, businessCurrency)).filter(Boolean);
 }
+
+export function roundExchangeRate(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return Math.round(n * 1e8) / 1e8;
+}
+
+export function booksRebaseCorrectionFactor(oldRate, newRate) {
+    if (!isValidExchangeRate(oldRate) || !isValidExchangeRate(newRate)) return null;
+    if (roundExchangeRate(oldRate) === roundExchangeRate(newRate)) return 1;
+    const factor = Number(newRate) / Number(oldRate);
+    return Number.isFinite(factor) && factor > 0 ? factor : null;
+}
+
+function scaleItemUnitCosts(items, rate) {
+    if (!Array.isArray(items)) return { items, changed: false };
+    let changed = false;
+    const next = items.map((item) => {
+        if (!item || typeof item !== 'object') return item;
+        const cost = Number(item.unitCost);
+        if (!Number.isFinite(cost) || cost === 0) return item;
+        changed = true;
+        return { ...item, unitCost: roundMoney(cost * rate) };
+    });
+    return { items: next, changed };
+}
+
+function pickBooksPatch(patch, kind) {
+    if (kind === 'purchaseOrder') {
+        const { exchangeRate, baseCurrency, baseSubtotal, baseTotal } = patch;
+        return { exchangeRate, baseCurrency, baseSubtotal, baseTotal };
+    }
+    if (kind === 'quotation') {
+        const { exchangeRate, baseCurrency, baseSubtotal, baseTax, baseDiscount, baseTotal } = patch;
+        return { exchangeRate, baseCurrency, baseSubtotal, baseTax, baseDiscount, baseTotal };
+    }
+    return patch;
+}
+
+/**
+ * Rebase a document's books fields from one business currency into another.
+ * Client-facing `currency` and face amounts are left unchanged.
+ */
+export function rebaseDocumentBooks(doc, { fromCurrency, toCurrency, rate, kind = 'invoice' } = {}) {
+    if (!doc) return null;
+    const from = normalizeCurrency(fromCurrency);
+    const to = normalizeCurrency(toCurrency);
+    const rebaseRate = Number(rate);
+    if (from === to || !isValidExchangeRate(rebaseRate)) return null;
+
+    const docCurrency = normalizeCurrency(doc.currency || from);
+    const baseCurrency = doc.baseCurrency ? normalizeCurrency(doc.baseCurrency) : docCurrency;
+    if (baseCurrency === to) return null;
+
+    const amountPaid = recordedAmountPaid(doc);
+
+    if (docCurrency === to) {
+        const { items, changed } = scaleItemUnitCosts(doc.items, rebaseRate);
+        const patch = {
+            exchangeRate: 1,
+            baseCurrency: to,
+            ...computeBaseAmounts({
+                subtotal: doc.subtotal,
+                tax: doc.tax,
+                discount: doc.discount,
+                total: doc.total,
+                amountPaid,
+                exchangeRate: 1,
+            }),
+        };
+        if (kind === 'invoice' && changed) patch.items = items;
+        return pickBooksPatch(patch, kind);
+    }
+
+    if (docCurrency !== from && !isValidExchangeRate(doc.exchangeRate)) {
+        return null;
+    }
+
+    const previousRate =
+        docCurrency === from || !isValidExchangeRate(doc.exchangeRate)
+            ? 1
+            : Number(doc.exchangeRate);
+    const newRate = roundExchangeRate(previousRate * rebaseRate);
+    if (!isValidExchangeRate(newRate)) return null;
+
+    const hasStoredBase = doc.baseTotal != null || doc.baseSubtotal != null;
+    const baseFields =
+        hasStoredBase && (baseCurrency === from || !doc.baseCurrency)
+            ? {
+                  baseSubtotal: roundMoney((Number(doc.baseSubtotal) || 0) * rebaseRate),
+                  baseTax: roundMoney((Number(doc.baseTax) || 0) * rebaseRate),
+                  baseDiscount: roundMoney((Number(doc.baseDiscount) || 0) * rebaseRate),
+                  baseTotal: roundMoney((Number(doc.baseTotal) || Number(doc.total) || 0) * rebaseRate),
+                  baseAmountPaid: roundMoney(
+                      (doc.baseAmountPaid != null ? Number(doc.baseAmountPaid) : amountPaid) *
+                          rebaseRate
+                  ),
+              }
+            : computeBaseAmounts({
+                  subtotal: doc.subtotal,
+                  tax: doc.tax,
+                  discount: doc.discount,
+                  total: doc.total,
+                  amountPaid,
+                  exchangeRate: newRate,
+              });
+
+    const { items, changed } = scaleItemUnitCosts(doc.items, rebaseRate);
+    const patch = {
+        exchangeRate: newRate,
+        baseCurrency: to,
+        ...baseFields,
+    };
+    if (kind === 'invoice' && changed) patch.items = items;
+    return pickBooksPatch(patch, kind);
+}
+
+/**
+ * Restate books after a mistaken conversion rate. Face amounts stay put.
+ */
+export function correctDocumentBooksRate(
+    doc,
+    { fromCurrency, toCurrency, oldRate, newRate, kind = 'invoice' } = {}
+) {
+    if (!doc) return null;
+    const from = normalizeCurrency(fromCurrency);
+    const to = normalizeCurrency(toCurrency);
+    const factor = booksRebaseCorrectionFactor(oldRate, newRate);
+    if (from === to || factor == null || factor === 1) return null;
+
+    const docCurrency = normalizeCurrency(doc.currency || from);
+    const baseCurrency = doc.baseCurrency ? normalizeCurrency(doc.baseCurrency) : docCurrency;
+    if (baseCurrency !== to) return null;
+
+    if (docCurrency === to) {
+        const { items, changed } = scaleItemUnitCosts(doc.items, factor);
+        if (!changed || kind !== 'invoice') return null;
+        return { items };
+    }
+
+    const nextExchangeRate =
+        docCurrency === from || !isValidExchangeRate(doc.exchangeRate)
+            ? roundExchangeRate(newRate)
+            : roundExchangeRate(Number(doc.exchangeRate) * factor);
+    if (!isValidExchangeRate(nextExchangeRate)) return null;
+
+    const amountPaid = recordedAmountPaid(doc);
+    const { items, changed } = scaleItemUnitCosts(doc.items, factor);
+    const patch = {
+        exchangeRate: nextExchangeRate,
+        baseCurrency: to,
+        ...computeBaseAmounts({
+            subtotal: doc.subtotal,
+            tax: doc.tax,
+            discount: doc.discount,
+            total: doc.total,
+            amountPaid,
+            exchangeRate: nextExchangeRate,
+        }),
+    };
+    if (kind === 'invoice' && changed) patch.items = items;
+    return pickBooksPatch(patch, kind);
+}

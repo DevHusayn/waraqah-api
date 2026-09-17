@@ -45,6 +45,20 @@ test('toBusinessInfoResponse returns stored country and currency', () => {
     assert.equal(response.defaultCurrency, 'GHS');
 });
 
+test('toBusinessInfoResponse includes the last books conversion', () => {
+    const response = toBusinessInfoResponse({
+        name: 'Acme',
+        plan: 'free',
+        booksRebasedAt: '2026-09-17T12:00:00.000Z',
+        booksRebaseFrom: 'NGN',
+        booksRebaseTo: 'USD',
+        booksRebaseRate: 0.00067,
+    });
+    assert.equal(response.booksRebaseFrom, 'NGN');
+    assert.equal(response.booksRebaseTo, 'USD');
+    assert.equal(response.booksRebaseRate, 0.00067);
+});
+
 test('toBusinessInfoResponse defaults missing country and currency to Nigeria / Naira', () => {
     const response = toBusinessInfoResponse({ name: 'Acme', plan: 'free' });
     assert.equal(response.country, 'NG');

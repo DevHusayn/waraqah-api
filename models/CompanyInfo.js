@@ -60,6 +60,12 @@ const businessInfoSchema = new mongoose.Schema({
     monthlyStatementLastSentFor: { type: String, default: null },
     /** premiumUntil value this expiry reminder was sent for (avoids duplicate sends). */
     premiumExpiryReminderForUntil: { type: Date, default: null },
+    /** Last books currency conversion (country / operating-currency change). */
+    booksRebasedAt: { type: Date, default: null },
+    booksRebaseFrom: { type: String, default: null },
+    booksRebaseTo: { type: String, default: null },
+    booksRebaseRate: { type: Number, default: null },
+    booksRebaseCorrectedAt: { type: Date, default: null },
 }, { timestamps: true });
 
 businessInfoSchema.index({ paystackSubscriptionCode: 1 }, { sparse: true });

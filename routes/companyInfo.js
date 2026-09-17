@@ -16,6 +16,17 @@ import { isProduction } from '../utils/envValidation.js';
 import { optimizeBusinessAsset } from '../utils/imageOptimize.js';
 import { invalidateDashboardCache } from '../utils/dashboardStats.js';
 import { reconcilePremiumUntilForUser } from '../services/premiumActivation.js';
+import { persistBusinessCurrencyChange, userHasBooksAmounts } from '../utils/booksCurrencyRebase.js';
+import { isValidExchangeRate, roundExchangeRate } from '../utils/documentCurrency.js';
+import { normalizeCurrency } from '../utils/locale.js';
+
+async function toBusinessInfoClientResponse(userId, info, options) {
+    const doc = info || await BusinessInfo.findOne({ userId });
+    const response = toBusinessInfoResponse(doc, options);
+    if (!response) return response;
+    response.hasBooksAmounts = await userHasBooksAmounts(userId);
+    return response;
+}
 
 const router = express.Router();
 
@@ -40,7 +51,7 @@ router.get('/assets', auth, asyncHandler(async (req, res) => {
 router.get('/', auth, asyncHandler(async (req, res) => {
     const info = await getOrCreateBusinessInfo(req.user.userId);
     const summary = req.query.summary === '1' || req.query.summary === 'true';
-    res.json(toBusinessInfoResponse(info, { includeAssets: !summary }));
+    res.json(await toBusinessInfoClientResponse(req.user.userId, info, { includeAssets: !summary }));
 }));
 
 // Update business info (plan cannot be changed here — admin/billing only)
@@ -79,13 +90,57 @@ router.put('/', auth, asyncHandler(async (req, res) => {
             })
     );
 
-    const info = await BusinessInfo.findOneAndUpdate(
-        { userId: req.user.userId },
-        { $set: updates },
-        { new: true, upsert: true }
-    );
+    const existingCurrency = normalizeCurrency(existing.defaultCurrency);
+    const nextCurrency =
+        updates.defaultCurrency !== undefined
+            ? normalizeCurrency(updates.defaultCurrency)
+            : existingCurrency;
+
+    let rebase = null;
+    let correction = null;
+    if (nextCurrency !== existingCurrency) {
+        const hasBooksAmounts = await userHasBooksAmounts(req.user.userId);
+        if (hasBooksAmounts) {
+            const rate = Number(req.body?.currencyExchangeRate);
+            if (!isValidExchangeRate(rate)) {
+                const err = new Error(`Enter how many ${nextCurrency} equal 1 ${existingCurrency}.`);
+                err.status = 400;
+                throw err;
+            }
+            rebase = {
+                fromCurrency: existingCurrency,
+                toCurrency: nextCurrency,
+                rate,
+            };
+        }
+    } else {
+        const requestedRate = Number(req.body?.currencyExchangeRate);
+        const lastFrom = existing.booksRebaseFrom;
+        const lastTo = existing.booksRebaseTo;
+        const lastRate = Number(existing.booksRebaseRate);
+        const lastAt = existing.booksRebasedAt;
+        const stillOnConvertedBooks =
+            lastFrom &&
+            lastTo &&
+            lastAt &&
+            isValidExchangeRate(lastRate) &&
+            normalizeCurrency(lastTo) === existingCurrency;
+        if (stillOnConvertedBooks && isValidExchangeRate(requestedRate)) {
+            if (roundExchangeRate(requestedRate) !== roundExchangeRate(lastRate)) {
+                correction = {
+                    fromCurrency: lastFrom,
+                    toCurrency: lastTo,
+                    oldRate: lastRate,
+                    newRate: requestedRate,
+                    rebasedAt: lastAt,
+                };
+            }
+        }
+    }
+
+    const info = await persistBusinessCurrencyChange(req.user.userId, updates, rebase, correction);
     invalidateDashboardCache(req.user.userId);
-    res.json(toBusinessInfoResponse(info));
+    res.json(await toBusinessInfoClientResponse(req.user.userId, info));
 }));
 
 export default router;
