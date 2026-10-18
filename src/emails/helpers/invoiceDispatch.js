@@ -14,6 +14,7 @@ import {
     computeDaysUntilDue,
 } from './invoiceContext.js';
 import { ensureInvoicePublicToken } from '../../../utils/invoicePublicToken.js';
+import { maybeNotifyPaymentReceived } from '../../../utils/paymentPush.js';
 import {
     notifyOwnerInvoiceEmailed,
     notifyOwnerInvoicePaid,
@@ -137,6 +138,13 @@ export async function dispatchOverdueInvoiceEmails({ invoice, userId }) {
  * Sends payment confirmation (not receipt — use send-receipt for that).
  */
 export async function dispatchPaidInvoiceEmails(invoice, userId) {
+    void maybeNotifyPaymentReceived({
+        userId,
+        invoiceId: invoice._id,
+        invoiceNumber: invoice.invoiceNumber,
+        amount: Number(invoice.amountPaid) > 0 ? Number(invoice.amountPaid) : invoice.total,
+        currency: invoice.currency || 'NGN',
+    });
     try {
         await ensureInvoicePublicToken(invoice);
         const ctx = await loadInvoiceEmailContext(invoice, userId);
@@ -171,6 +179,13 @@ export async function dispatchPaidInvoiceEmails(invoice, userId) {
  * Notify client and owner when a partial installment is recorded.
  */
 export async function dispatchPartialPaymentEmails(invoice, userId, payment) {
+    void maybeNotifyPaymentReceived({
+        userId,
+        invoiceId: invoice._id,
+        invoiceNumber: invoice.invoiceNumber,
+        amount: Number(payment?.amount) || 0,
+        currency: invoice.currency || 'NGN',
+    });
     try {
         await ensureInvoicePublicToken(invoice);
         const amountPaid = Number(invoice.amountPaid) > 0 ? Number(invoice.amountPaid) : 0;

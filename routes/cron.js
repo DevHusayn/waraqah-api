@@ -2,6 +2,7 @@ import express from 'express';
 import { sendDuePaymentReminders } from '../paymentReminderAutomation.js';
 import { sendPremiumExpiryReminders } from '../premiumExpiryReminderAutomation.js';
 import { sendLowStockDigests } from '../lowStockAlertAutomation.js';
+import { sendInsightPushes } from '../pushInsightAutomation.js';
 import { sendMonthlyStatements } from '../monthlyStatementAutomation.js';
 import { enqueueLifecycleFollowUps } from '../utils/lifecycleFollowUpService.js';
 import { generateRecurringInvoices } from '../utils/recurringInvoices.js';
@@ -60,6 +61,12 @@ router.get('/recurring-invoices', verifyCronSecret, asyncHandler(async (req, res
 router.get('/recurring-expenses', verifyCronSecret, asyncHandler(async (req, res) => {
     const { createdCount } = await generateRecurringExpenses();
     res.json({ ok: true, message: 'Recurring expenses processed.', createdCount });
+}));
+
+/** Vercel Cron — hourly check; sends one morning insight per user in their timezone. */
+router.get('/insight-pushes', verifyCronSecret, asyncHandler(async (req, res) => {
+    const { processed, skipped } = await sendInsightPushes();
+    res.json({ ok: true, message: 'Insight pushes processed.', processed, skipped });
 }));
 
 /** Vercel Cron — daily low-stock digest for opted-in users. */

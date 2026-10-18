@@ -2,6 +2,8 @@ import BusinessInfo from './models/CompanyInfo.js';
 import User from './models/User.js';
 import { PLANS } from './utils/businessInfoHelpers.js';
 import { sendPremiumExpiryReminderEmail } from './src/emails/index.js';
+import { buildPremiumExpiryPush } from './utils/pushInsight.js';
+import { sendPushToUser } from './utils/webPush.js';
 
 const REMINDER_DAYS_MONTHLY = 3;
 const REMINDER_DAYS_YEARLY = 7;
@@ -89,6 +91,14 @@ async function sendPremiumExpiryReminders() {
                 info.premiumExpiryReminderForUntil = info.premiumUntil;
                 await info.save();
                 processed += 1;
+                try {
+                    await sendPushToUser(info.userId, buildPremiumExpiryPush(premiumUntilLabel));
+                } catch (pushErr) {
+                    console.error('[Waraqah Push] Premium expiry alert failed:', {
+                        userId: info.userId,
+                        message: pushErr?.message,
+                    });
+                }
             } catch (err) {
                 console.error('[Waraqah Email] Premium expiry reminder failed:', {
                     userId: info.userId,

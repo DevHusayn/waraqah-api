@@ -42,6 +42,10 @@ export function validateEnv() {
         warnings.push('AI_API_KEY is not set — Premium document drafting will be unavailable.');
     }
 
+    if (isProduction() && (!process.env.VAPID_PUBLIC_KEY?.trim() || !process.env.VAPID_PRIVATE_KEY?.trim())) {
+        warnings.push('VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY are not set — PWA push notifications are off.');
+    }
+
     if (isProduction() && process.env.VERCEL_REGION && process.env.MONGO_URI?.includes('mongodb')) {
         warnings.push(
             `For lowest latency, deploy MongoDB Atlas in the same region as Vercel (${process.env.VERCEL_REGION}).`

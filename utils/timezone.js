@@ -42,6 +42,36 @@ export function getYearMonthInTimezone(timeZone, date = new Date()) {
     return { year, month };
 }
 
+/** Calendar date and hour in a business timezone. Hour 24 from some engines is midnight. */
+export function getLocalClockInTimezone(timeZone, date = new Date()) {
+    const tz = normalizeTimezone(timeZone);
+    const parts = Object.fromEntries(
+        new Intl.DateTimeFormat('en-GB', {
+            timeZone: tz,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            hourCycle: 'h23',
+        })
+            .formatToParts(date)
+            .filter((part) => part.type !== 'literal')
+            .map((part) => [part.type, part.value])
+    );
+    let hour = Number.parseInt(parts.hour, 10);
+    if (hour === 24) hour = 0;
+    const year = Number.parseInt(parts.year, 10);
+    const month = Number.parseInt(parts.month, 10);
+    const day = Number.parseInt(parts.day, 10);
+    return {
+        year,
+        month,
+        day,
+        hour,
+        localDate: toDateInputValue(year, month, day),
+    };
+}
+
 export function toDateInputValue(year, month, day) {
     return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }

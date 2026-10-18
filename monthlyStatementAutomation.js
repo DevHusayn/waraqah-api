@@ -10,6 +10,8 @@ import {
     generateMonthlyStatementPdfBuffer,
 } from './utils/monthlyStatementPdf.js';
 import { formatStatementPeriodKey } from './utils/monthlyStatementBuild.js';
+import { buildStatementPush } from './utils/pushInsight.js';
+import { sendPushToUser } from './utils/webPush.js';
 
 const BATCH_SIZE = 50;
 
@@ -109,6 +111,14 @@ async function sendMonthlyStatements({ forcePeriodKey = null } = {}) {
                 info.monthlyStatementLastSentFor = periodKey;
                 await info.save();
                 processed += 1;
+                try {
+                    await sendPushToUser(info.userId, buildStatementPush(statement.periodLabel));
+                } catch (pushErr) {
+                    console.error('[Waraqah Push] Statement alert failed:', {
+                        userId: info.userId,
+                        message: pushErr?.message,
+                    });
+                }
             } catch (err) {
                 console.error('[Waraqah Email] Monthly statement failed:', {
                     userId: info.userId,

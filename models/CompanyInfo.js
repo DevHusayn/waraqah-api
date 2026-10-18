@@ -54,6 +54,14 @@ const businessInfoSchema = new mongoose.Schema({
     autoUpdateCostFromPO: { type: Boolean, default: false },
     /** Last low-stock digest sent to the owner (max one email per 24 hours). */
     lowStockEmailLastSentAt: { type: Date, default: null },
+    /** Local calendar date (YYYY-MM-DD) of the last morning insight push. */
+    insightPushLastLocalDate: { type: String, default: null },
+    /** Last insight payload fingerprint, so an unchanged briefing is not repeated daily. */
+    insightPushFingerprint: { type: String, default: null },
+    /** Local date the current fingerprint was first sent. Resend after a few quiet days. */
+    insightPushFingerprintLocalDate: { type: String, default: null },
+    /** Local calendar date of the last immediate payment push (max one per day). */
+    paymentPushLastLocalDate: { type: String, default: null },
     /** Email the owner their monthly billing statement PDF (Premium). Default on. */
     autoEmailMonthlyStatements: { type: Boolean, default: true },
     /** Period key "YYYY-MM" for the last automated monthly statement email. */

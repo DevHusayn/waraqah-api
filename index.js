@@ -25,6 +25,8 @@ import staffRoutes from './routes/staff.js';
 import paymentRoutes, { paystackWebhookHandler } from './routes/payments.js';
 import publicRoutes from './routes/publicInvoices.js';
 import cronRoutes from './routes/cron.js';
+import pushRoutes from './routes/push.js';
+import adminPushRoutes from './routes/adminPush.js';
 import adminFollowUpRoutes from './routes/adminFollowUps.js';
 import { buildCorsOptions } from './utils/corsConfig.js';
 import { assertEnvOrExit } from './utils/envValidation.js';
@@ -150,6 +152,8 @@ app.use('/api/public', publicRoutes);
 app.use('/api/cron', cronRoutes);
 
 app.use('/api', csrfProtection);
+app.use('/api/push', pushRoutes);
+app.use('/api/admin/push', adminPushRoutes);
 
 app.use('/api/auth/admin/follow-ups', adminFollowUpRoutes);
 app.use('/api/auth', authRoutes);
@@ -182,6 +186,7 @@ if (process.env.VERCEL !== '1') {
         .then(() => import('./recurringAutomation.js'))
         .then(() => import('./paymentReminderCron.js'))
         .then(() => import('./lowStockAlertCron.js'))
+        .then(() => import('./insightPushCron.js'))
         .then(() => import('./monthlyStatementCron.js'))
         .then(() => import('./lifecycleFollowUpCron.js'))
         .catch((err) => console.error('Startup error:', err));
