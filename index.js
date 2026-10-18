@@ -25,6 +25,7 @@ import staffRoutes from './routes/staff.js';
 import paymentRoutes, { paystackWebhookHandler } from './routes/payments.js';
 import publicRoutes from './routes/publicInvoices.js';
 import cronRoutes from './routes/cron.js';
+import adminFollowUpRoutes from './routes/adminFollowUps.js';
 import { buildCorsOptions } from './utils/corsConfig.js';
 import { assertEnvOrExit } from './utils/envValidation.js';
 import { readApiLimiter, writeApiLimiter } from './middleware/rateLimits.js';
@@ -150,6 +151,7 @@ app.use('/api/cron', cronRoutes);
 
 app.use('/api', csrfProtection);
 
+app.use('/api/auth/admin/follow-ups', adminFollowUpRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/dashboard', dashboardRoutes);
@@ -181,6 +183,7 @@ if (process.env.VERCEL !== '1') {
         .then(() => import('./paymentReminderCron.js'))
         .then(() => import('./lowStockAlertCron.js'))
         .then(() => import('./monthlyStatementCron.js'))
+        .then(() => import('./lifecycleFollowUpCron.js'))
         .catch((err) => console.error('Startup error:', err));
 
     app.listen(PORT, () => {

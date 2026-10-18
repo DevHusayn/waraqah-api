@@ -25,6 +25,8 @@ const userSchema = new mongoose.Schema({
     emailVerificationToken: { type: String },
     emailVerificationExpires: { type: Date },
     emailVerificationSentAt: { type: Date },
+    /** When true, lifecycle follow-up emails are never queued. */
+    lifecycleFollowUpsOptOut: { type: Boolean, default: false },
 }, { timestamps: true });
 
 export default mongoose.model('User', userSchema);

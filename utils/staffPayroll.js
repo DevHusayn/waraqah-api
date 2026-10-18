@@ -52,6 +52,65 @@ export function parsePayrollPeriodInput(source = {}) {
     return { year, month, period: formatPayrollPeriod(year, month) };
 }
 
+export function staffFirstName(name) {
+    const first = String(name || '').trim().split(/\s+/).filter(Boolean)[0];
+    return first || 'there';
+}
+
+export function formatPayrollPaymentDate(value) {
+    const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!match) return String(value || '').trim() || '—';
+    const month = Number(match[2]);
+    if (month < 1 || month > 12) return String(value).trim();
+    return `${Number(match[3])} ${MONTH_NAMES[month - 1]} ${match[1]}`;
+}
+
+export function formatPayrollAmount(amount, currency = 'NGN') {
+    const numeric = roundMoney(amount);
+    const code = String(currency || 'NGN').trim().toUpperCase() || 'NGN';
+    const formatted = numeric.toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+    return `${code} ${formatted}`;
+}
+
+export function payrollPaymentEmailSubject(periodLabel) {
+    return `Salary payment confirmation — ${periodLabel}`;
+}
+
+export function buildPayrollPaymentEmailText({
+    firstName,
+    staffName,
+    role,
+    businessName,
+    periodLabel,
+    paymentDateLabel,
+    amountLabel,
+}) {
+    const greeting = firstName || 'there';
+    const employer = businessName || 'Your business';
+    return [
+        `Hello ${greeting},`,
+        '',
+        `This confirms that your salary for ${periodLabel} has been recorded as paid.`,
+        '',
+        `Employer: ${employer}`,
+        `Name: ${staffName}`,
+        `Role: ${role}`,
+        `Pay period: ${periodLabel}`,
+        `Payment date: ${paymentDateLabel}`,
+        `Amount: ${amountLabel}`,
+        '',
+        'This message is a confirmation of payment for your records.',
+        '',
+        `If anything looks incorrect, reply to this email or contact ${employer}.`,
+        '',
+        '—',
+        employer,
+    ].join('\n');
+}
+
 export function buildPayrollExpenseDescription(role, year, month) {
     const label = formatPayrollPeriodLabel(year, month);
     const roleText = String(role || '').trim();
@@ -97,6 +156,7 @@ export function buildPayrollRow(staff, payment) {
         id,
         name: staff.name,
         role: staff.role,
+        email: staff.email || '',
         salary,
         isActive: staff.isActive !== false,
         paid,

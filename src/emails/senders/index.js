@@ -29,4 +29,5 @@ export { sendPremiumSubscriptionCancelledEmail } from './premiumSubscriptionCanc
 export { sendPremiumExpiryReminderEmail } from './premiumExpiryReminderEmail.js';
 export { sendLowStockAlertEmail } from './lowStockAlertEmail.js';
 export { sendMonthlyStatementEmail } from './monthlyStatementEmail.js';
+export { sendPayrollPaymentEmail } from './payrollPaymentEmail.js';
 export { sendAdminMessageEmail, renderAdminMessageEmail } from './adminMessageEmail.js';

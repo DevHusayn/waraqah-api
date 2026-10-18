@@ -111,6 +111,7 @@ router.get('/payees/:name', auth, asyncHandler(async (req, res) => {
                 id: String(staff._id),
                 name: staff.name,
                 role: staff.role,
+                email: staff.email || '',
                 salary: staff.salary,
                 isActive: staff.isActive !== false,
             }

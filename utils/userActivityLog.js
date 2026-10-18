@@ -70,10 +70,13 @@ export async function logAdminEmailSent(userId, actorId, {
     actionPreset,
     actionLabel,
     actionUrl,
+    templateId = '',
+    source = 'manual',
 } = {}) {
+    const fromQueue = source === 'queue';
     await logUserActivity(userId, 'admin_email_sent', {
-        title: 'Email sent by admin',
-        description: subject ? `Subject: ${subject}` : 'Admin sent an email',
+        title: fromQueue ? 'Follow-up email sent' : 'Email sent by admin',
+        description: subject ? `Subject: ${subject}` : (fromQueue ? 'Queued follow-up sent' : 'Admin sent an email'),
         meta: {
             subject: subject || '',
             preview: preview || '',
@@ -86,6 +89,8 @@ export async function logAdminEmailSent(userId, actorId, {
             actionPreset: actionPreset || 'none',
             actionLabel: actionLabel || '',
             actionUrl: actionUrl || '',
+            templateId: templateId || '',
+            source: fromQueue ? 'queue' : 'manual',
         },
         actorId,
     });

@@ -233,6 +233,7 @@ export function sanitizeStaffPayload(body) {
     return {
         name,
         role,
+        email: body.email ? sanitizeOptionalEmail(body.email) : '',
         salary: sanitizeStaffSalary(body.salary),
         isActive: body.isActive === undefined ? true : Boolean(body.isActive),
     };
@@ -263,6 +264,9 @@ export function sanitizeStaffUpdates(body) {
             throw err;
         }
         updates.role = role;
+    }
+    if (body.email !== undefined) {
+        updates.email = body.email ? sanitizeOptionalEmail(body.email) : '';
     }
     if (body.salary !== undefined) {
         updates.salary = sanitizeStaffSalary(body.salary);

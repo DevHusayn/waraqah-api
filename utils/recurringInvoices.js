@@ -27,6 +27,34 @@ function cloneLineItems(items) {
     }));
 }
 
+export function markSeriesRecurring(invoices, activeSourceIds) {
+    const active = new Set((activeSourceIds || []).map((id) => String(id)));
+    return (invoices || []).map((invoice) => ({
+        ...invoice,
+        seriesRecurring:
+            Boolean(invoice.isRecurring)
+            || active.has(String(invoice.recurringSourceId || '')),
+    }));
+}
+
+export async function attachSeriesRecurring(invoices, userId) {
+    const sourceIds = [...new Set(
+        (invoices || [])
+            .map((invoice) => invoice.recurringSourceId)
+            .filter(Boolean)
+            .map((id) => String(id))
+    )];
+    if (!sourceIds.length) return markSeriesRecurring(invoices, []);
+
+    const active = await Invoice.find({
+        _id: { $in: sourceIds },
+        userId,
+        isRecurring: true,
+    }).select('_id').lean();
+
+    return markSeriesRecurring(invoices, active.map((row) => row._id));
+}
+
 export function buildRecurringInvoiceChildPayload(template) {
     const date = template.recurringNextDate;
     const dueDate = computeRecurringDueDate(template.date, template.dueDate, date);
@@ -139,7 +167,7 @@ export async function generateRecurringInvoices(now = new Date()) {
                 allowOverselling,
             });
             createdCount += 1;
-            tryAutoEmailInvoice({ invoice, userId: template.userId });
+            await tryAutoEmailInvoice({ invoice, userId: template.userId });
 
             const advanced = addFrequency(template.recurringNextDate, template.recurringFrequency);
             const ended = Boolean(

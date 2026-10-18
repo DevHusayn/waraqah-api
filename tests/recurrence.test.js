@@ -6,9 +6,9 @@ import {
     computeRecurringDueDate,
     shouldGenerateRecurrence,
 } from '../utils/recurrence.js';
-import { buildRecurringInvoiceChildPayload } from '../utils/recurringInvoices.js';
+import { buildRecurringInvoiceChildPayload, markSeriesRecurring } from '../utils/recurringInvoices.js';
 import { buildRecurringExpenseChildPayload } from '../utils/recurringExpenses.js';
-import { applyListRecurringAndDateFilter } from '../utils/recurringListFilter.js';
+import { applyListRecurringAndDateFilter, includeRecurringChildren } from '../utils/recurringListFilter.js';
 
 test('addFrequency clamps month-end and leap years', () => {
     assert.equal(addFrequency('2026-01-31', 'monthly'), '2026-02-28');
@@ -119,4 +119,28 @@ test('recurring list filter keeps templates even when a period date filter is pr
         { recurring: undefined, dateFilter }
     );
     assert.deepEqual(monthly, { userId: 'u1', date: dateFilter.date });
+});
+
+test('generated invoices stay marked recurring while their template is active', () => {
+    const rows = markSeriesRecurring(
+        [
+            { _id: 'child', isRecurring: false, recurringSourceId: 'tmpl' },
+            { _id: 'stopped-child', isRecurring: false, recurringSourceId: 'old' },
+            { _id: 'tmpl', isRecurring: true },
+        ],
+        ['tmpl']
+    );
+    assert.equal(rows[0].seriesRecurring, true);
+    assert.equal(rows[1].seriesRecurring, false);
+    assert.equal(rows[2].seriesRecurring, true);
+});
+
+test('recurring list filter includes children of active templates', () => {
+    const filter = applyListRecurringAndDateFilter({ userId: 'u1' }, { recurring: '1' });
+    includeRecurringChildren(filter, ['tmpl']);
+    assert.equal(filter.isRecurring, undefined);
+    assert.deepEqual(filter.$or, [
+        { isRecurring: true },
+        { recurringSourceId: { $in: ['tmpl'] } },
+    ]);
 });

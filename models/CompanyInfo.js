@@ -42,12 +42,12 @@ const businessInfoSchema = new mongoose.Schema({
     paymentSwift: { type: String, default: '' },
     paymentInstructions: { type: String, default: '' },
     invoiceTemplateId: { type: String, default: 'classic' },
-    /** Email invoice to client automatically when finalized (pending). */
-    autoEmailInvoices: { type: Boolean, default: false },
+    /** Email invoice to client automatically when finalized (pending). Default on. */
+    autoEmailInvoices: { type: Boolean, default: true },
     /** Email payment reminders automatically for due soon / overdue invoices. */
     autoPaymentReminders: { type: Boolean, default: true },
-    /** Email owner a daily digest when tracked products are low on stock or out of stock. */
-    lowStockEmailAlerts: { type: Boolean, default: false },
+    /** Email owner a daily digest when tracked products are low on stock or out of stock. Default on. */
+    lowStockEmailAlerts: { type: Boolean, default: true },
     /** Allow issuing documents that would push tracked stock below zero. Default off. */
     allowOverselling: { type: Boolean, default: false },
     /** Update product unit cost using weighted average when PO stock is received. */

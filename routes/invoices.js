@@ -63,7 +63,8 @@ import { INVOICE_ONLY_FILTER } from '../utils/invoiceDocumentFilter.js';
 import { countListSummary, buildSummaryResponse, resolveListSummaryOptions, isSummaryOnlyRequest, shouldFetchListSummary } from '../utils/listSummary.js';
 import { getInvoiceStatusCounts } from '../utils/dashboardAnalytics.js';
 import { getListPeriodMongoFilter } from '../utils/listMonthFilter.js';
-import { applyListRecurringAndDateFilter } from '../utils/recurringListFilter.js';
+import { applyListRecurringAndDateFilter, includeRecurringChildren } from '../utils/recurringListFilter.js';
+import { attachSeriesRecurring } from '../utils/recurringInvoices.js';
 import { sendInvoiceListExport } from '../utils/invoiceListExport.js';
 import {
     applyInventoryTransition,
@@ -195,6 +196,15 @@ router.get('/', auth, asyncHandler(async (req, res) => {
         }
     }
 
+    if (filter.isRecurring === true) {
+        const templateIds = await Invoice.distinct('_id', {
+            userId,
+            isRecurring: true,
+            ...INVOICE_ONLY_FILTER,
+        });
+        includeRecurringChildren(filter, templateIds);
+    }
+
     const listBase = { userId, status: { $ne: 'draft' }, ...INVOICE_ONLY_FILTER };
     const includeSummary = shouldFetchListSummary(req.query);
     const summaryOpts = includeSummary ? await resolveListSummaryOptions(req, userId) : null;
@@ -213,7 +223,8 @@ router.get('/', auth, asyncHandler(async (req, res) => {
             : Promise.resolve(null),
     ]);
 
-    const withClients = await attachClientNames(data, userId);
+    const withSeries = await attachSeriesRecurring(data, userId);
+    const withClients = await attachClientNames(withSeries, userId);
     res.json({
         data: withClients,
         pagination: buildPaginationMeta(page, limit, total),

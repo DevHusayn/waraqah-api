@@ -11,7 +11,7 @@ import { loadOwnerNotificationContext } from './ownerContext.js';
 
 export async function shouldAutoEmailQuotations(userId) {
     const info = await BusinessInfo.findOne({ userId }).select('autoEmailInvoices');
-    return Boolean(info?.autoEmailInvoices);
+    return info?.autoEmailInvoices !== false;
 }
 
 async function notifyOwnerQuotationEmailed({

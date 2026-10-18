@@ -25,7 +25,7 @@ import {
 
 export async function shouldAutoEmailInvoices(userId) {
     const info = await BusinessInfo.findOne({ userId }).select('autoEmailInvoices');
-    return Boolean(info?.autoEmailInvoices);
+    return info?.autoEmailInvoices !== false;
 }
 
 export async function shouldAutoPaymentReminders(userId) {

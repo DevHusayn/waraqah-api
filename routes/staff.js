@@ -18,6 +18,7 @@ import {
     getDatePartsInTimezone,
     toDateInputValue,
 } from '../utils/timezone.js';
+import { trySendPayrollPaymentEmail } from '../src/emails/helpers/payrollDispatch.js';
 
 const router = express.Router();
 
@@ -130,7 +131,19 @@ router.post('/:id/pay', auth, validateObjectId(), asyncHandler(async (req, res) 
             staffId: staff._id,
             payrollPeriod: period,
         });
-        res.status(201).json(expense);
+        const emailResult = await trySendPayrollPaymentEmail({
+            staff,
+            expense,
+            year,
+            month,
+            userId,
+        });
+        res.status(201).json({
+            ...expense.toObject(),
+            emailSent: emailResult.emailSent,
+            sentTo: emailResult.sentTo,
+            emailSkipped: emailResult.emailSkipped,
+        });
     } catch (err) {
         if (isDuplicatePayrollKeyError(err)) {
             const conflict = duplicatePayrollError();

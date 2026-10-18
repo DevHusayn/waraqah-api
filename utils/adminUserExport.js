@@ -3,6 +3,7 @@ import Invoice from '../models/Invoice.js';
 import Client from '../models/Client.js';
 import { getInvoiceUsageMapForUsers } from './invoiceLimits.js';
 import { adminDisplayName } from './adminDisplayName.js';
+import { isPremiumActive, PLANS } from './businessInfoHelpers.js';
 import { isProtectedAdminUser } from './protectedAdmin.js';
 
 export async function enrichAdminUsers(users) {
@@ -24,8 +25,16 @@ export async function enrichAdminUsers(users) {
 
     return users.map((user) => {
         const doc = typeof user.toObject === 'function' ? user.toObject() : user;
-        const businessInfo =
+        const storedBusiness =
             businessInfos.find((bi) => bi.userId.toString() === doc._id.toString()) || null;
+        const businessInfo = storedBusiness
+            ? {
+                  ...(typeof storedBusiness.toObject === 'function'
+                      ? storedBusiness.toObject()
+                      : storedBusiness),
+                  plan: isPremiumActive(storedBusiness) ? PLANS.PREMIUM : PLANS.FREE,
+              }
+            : null;
         const invoiceCount =
             invoiceCounts.find((ic) => ic._id.toString() === doc._id.toString())?.count || 0;
         const clientCount =

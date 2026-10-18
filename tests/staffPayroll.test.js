@@ -2,16 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     buildPayrollExpenseDescription,
+    buildPayrollPaymentEmailText,
     buildPayrollResponse,
     buildPayrollRow,
     buildPayrollTotals,
     duplicatePayrollError,
+    formatPayrollAmount,
+    formatPayrollPaymentDate,
     formatPayrollPeriod,
     formatPayrollPeriodLabel,
     isDuplicatePayrollKeyError,
     parsePayrollPeriodInput,
     parsePayrollPeriodString,
+    payrollPaymentEmailSubject,
     selectPayrollStaff,
+    staffFirstName,
     staffHasPayrollExpensesError,
 } from '../utils/staffPayroll.js';
 
@@ -52,6 +57,43 @@ test('parsePayrollPeriodInput rejects an invalid month', () => {
         () => parsePayrollPeriodInput({ year: 2026, month: 13 }),
         (err) => err.status === 400
     );
+});
+
+test('staffFirstName uses the first word and falls back to there', () => {
+    assert.equal(staffFirstName('Ade Okunola'), 'Ade');
+    assert.equal(staffFirstName('  '), 'there');
+});
+
+test('formatPayrollPaymentDate keeps the calendar day', () => {
+    assert.equal(formatPayrollPaymentDate('2026-10-12'), '12 October 2026');
+    assert.equal(formatPayrollPaymentDate('2026-03-02'), '2 March 2026');
+});
+
+test('formatPayrollAmount uses the currency code and two decimals', () => {
+    assert.equal(formatPayrollAmount(150000, 'NGN'), 'NGN 150,000.00');
+});
+
+test('payroll payment email copy includes period, date, and amount without a tax disclaimer', () => {
+    const text = buildPayrollPaymentEmailText({
+        firstName: 'Ade',
+        staffName: 'Ade Okunola',
+        role: 'Designer',
+        businessName: 'Acme Studio',
+        periodLabel: 'October 2026',
+        paymentDateLabel: '12 October 2026',
+        amountLabel: 'NGN 150,000.00',
+    });
+
+    assert.equal(
+        payrollPaymentEmailSubject('October 2026'),
+        'Salary payment confirmation — October 2026'
+    );
+    assert.match(text, /Hello Ade,/);
+    assert.match(text, /salary for October 2026 has been recorded as paid/);
+    assert.match(text, /Employer: Acme Studio/);
+    assert.match(text, /Payment date: 12 October 2026/);
+    assert.match(text, /Amount: NGN 150,000\.00/);
+    assert.equal(text.includes('tax document'), false);
 });
 
 test('buildPayrollExpenseDescription snapshots role and month', () => {
@@ -103,6 +145,7 @@ test('buildPayrollRow uses the expense snapshot when paid', () => {
     assert.equal(unpaid.paid, false);
     assert.equal(unpaid.amount, 120.56);
     assert.equal(unpaid.expenseId, null);
+    assert.equal(unpaid.email, '');
 
     const paid = buildPayrollRow(
         { id: '1', name: 'Ada', role: 'Driver', salary: 150, isActive: true },

@@ -47,10 +47,12 @@ test('sanitizeStaffPayload requires name, role, and a positive salary', () => {
         name: '  Adaeze  ',
         role: ' Designer ',
         salary: '150000.456',
+        email: '  Ade@Example.com ',
     });
 
     assert.equal(payload.name, 'Adaeze');
     assert.equal(payload.role, 'Designer');
+    assert.equal(payload.email, 'ade@example.com');
     assert.equal(payload.salary, 150000.46);
     assert.equal(payload.isActive, true);
 });
@@ -67,8 +69,19 @@ test('sanitizeStaffPayload rejects a missing role or non-positive salary', () =>
 });
 
 test('sanitizeStaffUpdates only includes provided fields', () => {
-    const updates = sanitizeStaffUpdates({ salary: 90, isActive: false });
-    assert.deepEqual(updates, { salary: 90, isActive: false });
+    const updates = sanitizeStaffUpdates({ salary: 90, isActive: false, email: 'staff@example.com' });
+    assert.deepEqual(updates, { salary: 90, isActive: false, email: 'staff@example.com' });
+});
+
+test('sanitizeStaffPayload and updates reject an invalid staff email', () => {
+    assert.throws(
+        () => sanitizeStaffPayload({ name: 'Ada', role: 'Driver', salary: 10, email: 'not-an-email' }),
+        (err) => err.status === 400
+    );
+    assert.throws(
+        () => sanitizeStaffUpdates({ email: 'not-an-email' }),
+        (err) => err.status === 400
+    );
 });
 
 test('paystack webhook signature verification', () => {

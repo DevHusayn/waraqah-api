@@ -14,11 +14,28 @@ export function getCurrentMonthRange() {
     return { start, end, periodKey };
 }
 
+/**
+ * Free-quota window for the current month.
+ * Documents created while Premium was still active do not consume the free cap,
+ * so a grant that ends mid-month only counts documents from premiumUntil onward.
+ * An admin reset later than that end date starts a fresh window.
+ */
+export function resolveFreeQuotaCountStart(rangeStart, { resetAfter = null, premiumUntil = null, now = new Date() } = {}) {
+    let countStart = rangeStart;
+    if (resetAfter instanceof Date && !Number.isNaN(resetAfter.getTime()) && resetAfter > countStart) {
+        countStart = resetAfter;
+    }
+    const until = premiumUntil ? new Date(premiumUntil) : null;
+    if (until && !Number.isNaN(until.getTime()) && until <= now && until > countStart) {
+        countStart = until;
+    }
+    return countStart;
+}
+
 /** Non-draft invoices that were not created via quotation conversion. */
-export async function countInvoicesInCurrentMonth(userId, resetAfter = null) {
+export async function countInvoicesInCurrentMonth(userId, resetAfter = null, premiumUntil = null) {
     const { start, end } = getCurrentMonthRange();
-    const countStart =
-        resetAfter instanceof Date && resetAfter > start ? resetAfter : start;
+    const countStart = resolveFreeQuotaCountStart(start, { resetAfter, premiumUntil });
     return Invoice.countDocuments({
         userId,
         createdAt: { $gte: countStart, $lt: end },
@@ -28,10 +45,9 @@ export async function countInvoicesInCurrentMonth(userId, resetAfter = null) {
 }
 
 /** Non-draft quotations count toward the same free-plan monthly limit. */
-export async function countQuotationsInCurrentMonth(userId, resetAfter = null) {
+export async function countQuotationsInCurrentMonth(userId, resetAfter = null, premiumUntil = null) {
     const { start, end } = getCurrentMonthRange();
-    const countStart =
-        resetAfter instanceof Date && resetAfter > start ? resetAfter : start;
+    const countStart = resolveFreeQuotaCountStart(start, { resetAfter, premiumUntil });
     return Quotation.countDocuments({
         userId,
         createdAt: { $gte: countStart, $lt: end },
@@ -39,10 +55,10 @@ export async function countQuotationsInCurrentMonth(userId, resetAfter = null) {
     });
 }
 
-export async function countDocumentsInCurrentMonth(userId, resetAfter = null) {
+export async function countDocumentsInCurrentMonth(userId, resetAfter = null, premiumUntil = null) {
     const [invoices, quotations] = await Promise.all([
-        countInvoicesInCurrentMonth(userId, resetAfter),
-        countQuotationsInCurrentMonth(userId, resetAfter),
+        countInvoicesInCurrentMonth(userId, resetAfter, premiumUntil),
+        countQuotationsInCurrentMonth(userId, resetAfter, premiumUntil),
     ]);
     return invoices + quotations;
 }
@@ -66,7 +82,8 @@ export async function getInvoiceUsageForUser(userId) {
     const usageDoc = await MonthlyInvoiceUsage.findOne({ userId, periodKey });
     const currentDocumentCount = await countDocumentsInCurrentMonth(
         userId,
-        usageDoc?.adminResetAt || null
+        usageDoc?.adminResetAt || null,
+        info?.premiumUntil || null
     );
     // Seed from current documents so users do not get extra slots after deployment.
     // Once the ledger is ahead, deleted documents still count for the month.
@@ -111,9 +128,8 @@ function buildFreeUsage({ start, end, used }) {
     };
 }
 
-function countDocsSinceReset(docs, userId, resetAfter, rangeStart, rangeEnd) {
-    const countStart =
-        resetAfter instanceof Date && resetAfter > rangeStart ? resetAfter : rangeStart;
+function countDocsSinceReset(docs, userId, resetAfter, rangeStart, rangeEnd, premiumUntil = null) {
+    const countStart = resolveFreeQuotaCountStart(rangeStart, { resetAfter, premiumUntil });
     const id = userId.toString();
     return docs.filter(
         (doc) =>
@@ -162,20 +178,23 @@ export async function getInvoiceUsageMapForUsers(userIds) {
         }
 
         const usageDoc = usageByUser.get(id);
+        const premiumUntil = info?.premiumUntil || null;
         const currentDocumentCount =
             countDocsSinceReset(
                 monthInvoices,
                 userId,
                 usageDoc?.adminResetAt || null,
                 start,
-                end
+                end,
+                premiumUntil
             ) +
             countDocsSinceReset(
                 monthQuotations,
                 userId,
                 usageDoc?.adminResetAt || null,
                 start,
-                end
+                end,
+                premiumUntil
             );
         const used = Math.max(usageDoc?.count || 0, currentDocumentCount);
         usageMap.set(id, buildFreeUsage({ start, end, used }));

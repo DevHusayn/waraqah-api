@@ -255,12 +255,20 @@ function clearPremiumAssets(target) {
     target.authorizedSignatureUrl = '';
 }
 
-export function isPremiumActive(doc) {
+export function isPremiumActive(doc, now = new Date()) {
     if (!doc) return false;
     const o = typeof doc.toObject === 'function' ? doc.toObject() : doc;
     if (o.plan !== PLANS.PREMIUM) return false;
     if (!o.premiumUntil) return true;
-    return new Date(o.premiumUntil) > new Date();
+    return new Date(o.premiumUntil) > now;
+}
+
+/** Stored plan is premium and premiumUntil has not passed. A missing end date does not expire. */
+export function activePremiumQuery(now = new Date()) {
+    return {
+        plan: PLANS.PREMIUM,
+        $or: [{ premiumUntil: null }, { premiumUntil: { $gt: now } }],
+    };
 }
 
 const EMPTY_ASSET_FIELDS = {
@@ -320,9 +328,9 @@ export function toBusinessInfoResponse(doc, { includeAssets = true } = {}) {
         paymentSwift: o.paymentSwift || '',
         paymentInstructions: o.paymentInstructions || '',
         invoiceTemplateId,
-        autoEmailInvoices: Boolean(o.autoEmailInvoices),
+        autoEmailInvoices: o.autoEmailInvoices !== false,
         autoPaymentReminders: o.autoPaymentReminders !== false,
-        lowStockEmailAlerts: Boolean(o.lowStockEmailAlerts),
+        lowStockEmailAlerts: o.lowStockEmailAlerts !== false,
         allowOverselling: Boolean(o.allowOverselling),
         autoUpdateCostFromPO: Boolean(o.autoUpdateCostFromPO),
         autoEmailMonthlyStatements: o.autoEmailMonthlyStatements !== false,
@@ -390,9 +398,9 @@ export const defaultBusinessInfoFields = {
     paymentSwift: '',
     paymentInstructions: '',
     invoiceTemplateId: DEFAULT_TEMPLATE_ID,
-    autoEmailInvoices: false,
+    autoEmailInvoices: true,
     autoPaymentReminders: true,
-    lowStockEmailAlerts: false,
+    lowStockEmailAlerts: true,
     allowOverselling: false,
     autoUpdateCostFromPO: false,
     autoEmailMonthlyStatements: true,

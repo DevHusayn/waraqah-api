@@ -8,8 +8,10 @@ import auth from '../middleware/auth.js';
 import requireAdmin from '../middleware/requireAdmin.js';
 import validateObjectId from '../middleware/validateObjectId.js';
 import {
+    activePremiumQuery,
     defaultBusinessInfoFields,
     isBusinessSetupComplete,
+    isPremiumActive,
     PLANS,
     toBusinessInfoResponse,
 } from '../utils/businessInfoHelpers.js';
@@ -81,6 +83,7 @@ import Product from '../models/Product.js';
 import Payment from '../models/Payment.js';
 import Staff from '../models/Staff.js';
 import AdminNote from '../models/AdminNote.js';
+import AdminFollowUp from '../models/AdminFollowUp.js';
 import UserActivityLog from '../models/UserActivityLog.js';
 import DeletedUser from '../models/DeletedUser.js';
 import { buildUserTimeline, buildSubscriptionHistory } from '../utils/adminUserTimeline.js';
@@ -96,6 +99,8 @@ import {
 } from '../utils/adminUserExport.js';
 import { adminDisplayName } from '../utils/adminDisplayName.js';
 import { isProtectedAdminUser } from '../utils/protectedAdmin.js';
+import { lifecycleTemplateLabel } from '../utils/lifecycleEmails.js';
+import { readyPendingFilter } from '../utils/lifecycleFollowUpService.js';
 import { disablePaystackSubscriptionForInfo } from '../services/paystack.js';
 import {
     logUserLogin,
@@ -270,7 +275,7 @@ router.get('/admin/users', auth, requireAdmin, async (req, res) => {
                 User.countDocuments(filter),
                 User.countDocuments({}),
                 User.countDocuments({ status: 'active' }),
-                BusinessInfo.countDocuments({ plan: 'premium' }),
+                BusinessInfo.countDocuments(activePremiumQuery()),
                 User.countDocuments({ status: 'suspended' }),
                 User.countDocuments({ isAdmin: true }),
                 DeletedUser.countDocuments({}),
@@ -883,6 +888,7 @@ router.get('/admin/users/:id', auth, requireAdmin, validateObjectId(), async (re
             clientCount,
             productCount,
             invoiceUsage,
+            pendingFollowUps,
         ] = await Promise.all([
             BusinessInfo.findOne({ userId }).lean(),
             Invoice.countDocuments({ userId }),
@@ -890,18 +896,23 @@ router.get('/admin/users/:id', auth, requireAdmin, validateObjectId(), async (re
             Client.countDocuments({ userId }),
             Product.countDocuments({ userId }),
             getInvoiceUsageForUser(userId),
+            AdminFollowUp.find({ userId, ...readyPendingFilter() })
+                .select('templateId reason createdAt snoozeUntil')
+                .sort({ createdAt: 1 })
+                .lean(),
         ]);
 
+        const premiumActive = isPremiumActive(businessInfo);
         const billing = businessInfo
             ? {
-                  plan: businessInfo.plan || 'free',
+                  plan: premiumActive ? PLANS.PREMIUM : PLANS.FREE,
                   billingInterval: businessInfo.billingInterval || null,
                   subscriptionStatus: businessInfo.subscriptionStatus || null,
                   subscriptionRenews:
-                      businessInfo.subscriptionStatus === 'active' && businessInfo.premiumUntil
+                      businessInfo.subscriptionStatus === 'active' && premiumActive && businessInfo.premiumUntil
                           ? businessInfo.premiumUntil
                           : null,
-                  premiumUntil: businessInfo.premiumUntil || null,
+                  premiumUntil: premiumActive && businessInfo.premiumUntil ? businessInfo.premiumUntil : null,
                   paystackSubscriptionCode: businessInfo.paystackSubscriptionCode || '',
               }
             : {
@@ -930,7 +941,16 @@ router.get('/admin/users/:id', auth, requireAdmin, validateObjectId(), async (re
                 lastActiveAt: user.lastActiveAt || null,
                 failedLoginAttempts: user.failedLoginAttempts || 0,
                 lockUntil: user.lockUntil || null,
+                lifecycleFollowUpsOptOut: Boolean(user.lifecycleFollowUpsOptOut),
             },
+            pendingFollowUps: pendingFollowUps.map((item) => ({
+                id: String(item._id),
+                templateId: item.templateId,
+                templateLabel: lifecycleTemplateLabel(item.templateId),
+                reason: item.reason || '',
+                createdAt: item.createdAt,
+                snoozeUntil: item.snoozeUntil || null,
+            })),
             businessInfo: businessInfo ? toBusinessInfoResponse(businessInfo) : null,
             stats: {
                 invoiceCount,
@@ -1130,6 +1150,8 @@ router.get('/admin/users/:id/emails', auth, requireAdmin, validateObjectId(), as
                 to: log.meta?.to || '',
                 actionLabel: log.meta?.actionLabel || '',
                 actionUrl: log.meta?.actionUrl || '',
+                templateId: log.meta?.templateId || '',
+                source: log.meta?.source || 'manual',
                 authorName: log.actorId ? nameById.get(String(log.actorId)) || 'Admin' : 'Admin',
                 createdAt: log.createdAt,
             })),

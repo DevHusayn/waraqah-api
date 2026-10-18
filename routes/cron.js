@@ -3,6 +3,7 @@ import { sendDuePaymentReminders } from '../paymentReminderAutomation.js';
 import { sendPremiumExpiryReminders } from '../premiumExpiryReminderAutomation.js';
 import { sendLowStockDigests } from '../lowStockAlertAutomation.js';
 import { sendMonthlyStatements } from '../monthlyStatementAutomation.js';
+import { enqueueLifecycleFollowUps } from '../utils/lifecycleFollowUpService.js';
 import { generateRecurringInvoices } from '../utils/recurringInvoices.js';
 import { generateRecurringExpenses } from '../utils/recurringExpenses.js';
 import { syncAllOverdueInvoices } from '../utils/invoiceOverdue.js';
@@ -72,6 +73,12 @@ router.get('/monthly-statements', verifyCronSecret, asyncHandler(async (req, res
     const forcePeriodKey = typeof req.query.period === 'string' ? req.query.period.trim() : null;
     const { processed, skipped } = await sendMonthlyStatements({ forcePeriodKey });
     res.json({ ok: true, message: 'Monthly statements processed.', processed, skipped });
+}));
+
+/** Vercel Cron — enqueue lifecycle follow-up emails for admin review (does not send). */
+router.get('/lifecycle-follow-ups', verifyCronSecret, asyncHandler(async (req, res) => {
+    const { enqueued, cancelled } = await enqueueLifecycleFollowUps();
+    res.json({ ok: true, message: 'Lifecycle follow-ups queued.', enqueued, cancelled });
 }));
 
 export default router;

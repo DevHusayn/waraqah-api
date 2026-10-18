@@ -3,6 +3,7 @@ import Invoice from '../models/Invoice.js';
 import Quotation from '../models/Quotation.js';
 import Client from '../models/Client.js';
 import Product from '../models/Product.js';
+import { activePremiumQuery } from './businessInfoHelpers.js';
 import { escapeRegex } from './pagination.js';
 
 const VALID_PLANS = new Set(['free', 'premium']);
@@ -191,10 +192,10 @@ export async function buildAdminUserFilter({ search, plan, status, activity, aut
     }
 
     if (plan === 'premium') {
-        const premiumUserIds = await BusinessInfo.find({ plan: 'premium' }).distinct('userId');
+        const premiumUserIds = await BusinessInfo.find(activePremiumQuery()).distinct('userId');
         conditions.push({ _id: { $in: premiumUserIds.length ? premiumUserIds : [null] } });
     } else if (plan === 'free') {
-        const premiumUserIds = await BusinessInfo.find({ plan: 'premium' }).distinct('userId');
+        const premiumUserIds = await BusinessInfo.find(activePremiumQuery()).distinct('userId');
         if (premiumUserIds.length) {
             conditions.push({ _id: { $nin: premiumUserIds } });
         }

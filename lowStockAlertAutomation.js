@@ -26,7 +26,7 @@ function mapProductsForEmail(products) {
 }
 
 async function sendLowStockDigests() {
-    const baseFilter = { lowStockEmailAlerts: true };
+    const baseFilter = { lowStockEmailAlerts: { $ne: false } };
     let lastId = null;
     let processed = 0;
     let skipped = 0;

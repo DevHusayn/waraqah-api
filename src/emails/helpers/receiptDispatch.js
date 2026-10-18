@@ -12,7 +12,7 @@ import { isReceiptDocument } from '../../../utils/receiptValidation.js';
 
 export async function shouldAutoEmailReceipts(userId) {
     const info = await BusinessInfo.findOne({ userId }).select('autoEmailInvoices');
-    return Boolean(info?.autoEmailInvoices);
+    return info?.autoEmailInvoices !== false;
 }
 
 export async function dispatchReceiptEmailToClient({
