@@ -17,31 +17,51 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Overdue sync
-        run: curl -sS -X GET "https://api.mywaraqah.com/api/cron/overdue-sync" -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+        run: >-
+          curl -sS -X GET "https://api.mywaraqah.com/api/cron/overdue-sync"
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
       - name: Expire quotations
-        run: curl -sS -X GET "https://api.mywaraqah.com/api/cron/expire-quotations" -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+        run: >-
+          curl -sS -X GET "https://api.mywaraqah.com/api/cron/expire-quotations"
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
       - name: Recurring invoices
-        run: curl -sS -X GET "https://api.mywaraqah.com/api/cron/recurring-invoices" -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+        run: >-
+          curl -sS -X GET "https://api.mywaraqah.com/api/cron/recurring-invoices"
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
       - name: Recurring expenses
-        run: curl -sS -X GET "https://api.mywaraqah.com/api/cron/recurring-expenses" -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+        run: >-
+          curl -sS -X GET "https://api.mywaraqah.com/api/cron/recurring-expenses"
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
       - name: Low stock alerts
-        run: curl -sS -X GET "https://api.mywaraqah.com/api/cron/low-stock-alerts" -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+        run: >-
+          curl -sS -X GET "https://api.mywaraqah.com/api/cron/low-stock-alerts"
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
       - name: Payment reminders
-        run: curl -sS -X GET "https://api.mywaraqah.com/api/cron/payment-reminders" -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+        run: >-
+          curl -sS -X GET "https://api.mywaraqah.com/api/cron/payment-reminders"
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
       - name: Premium expiry reminders
-        run: curl -sS -X GET "https://api.mywaraqah.com/api/cron/premium-expiry-reminders" -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+        run: >-
+          curl -sS -X GET "https://api.mywaraqah.com/api/cron/premium-expiry-reminders"
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
       - name: Monthly statements
-        run: curl -sS -X GET "https://api.mywaraqah.com/api/cron/monthly-statements" -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+        run: >-
+          curl -sS -X GET "https://api.mywaraqah.com/api/cron/monthly-statements"
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
       - name: Lifecycle follow-ups
-        run: curl -sS -X GET "https://api.mywaraqah.com/api/cron/lifecycle-follow-ups" -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+        run: >-
+          curl -sS -X GET "https://api.mywaraqah.com/api/cron/lifecycle-follow-ups"
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
 
       - name: Insight pushes
-        run: curl -sS -X GET "https://api.mywaraqah.com/api/cron/insight-pushes" -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
+        run: >-
+          curl -sS -X GET "https://api.mywaraqah.com/api/cron/insight-pushes"
+          -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}"
