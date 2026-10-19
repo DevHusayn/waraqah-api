@@ -1,47 +1,21 @@
 {
     "version": 2,
-    "builds": [{ "src": "index.js", "use": "@vercel/node" }],
-    "routes": [{ "src": "/(.*)", "dest": "index.js" }],
-    "crons": [
+    "builds": [
         {
-            "path": "/api/cron/overdue-sync",
-            "schedule": "0 0 * * *"
-        },
+            "src": "index.js",
+            "use": "@vercel/node"
+        }
+    ],
+    "routes": [
+        {
+            "src": "/(.*)",
+            "dest": "index.js"
+        }
+    ],
+    "crons": [
         {
             "path": "/api/cron/payment-reminders",
             "schedule": "0 9 * * *"
-        },
-        {
-            "path": "/api/cron/premium-expiry-reminders",
-            "schedule": "0 10 * * *"
-        },
-        {
-            "path": "/api/cron/expire-quotations",
-            "schedule": "0 0 * * *"
-        },
-        {
-            "path": "/api/cron/recurring-invoices",
-            "schedule": "0 2 * * *"
-        },
-        {
-            "path": "/api/cron/recurring-expenses",
-            "schedule": "0 2 * * *"
-        },
-        {
-            "path": "/api/cron/low-stock-alerts",
-            "schedule": "0 8 * * *"
-        },
-        {
-            "path": "/api/cron/insight-pushes",
-            "schedule": "0 * * * *"
-        },
-        {
-            "path": "/api/cron/monthly-statements",
-            "schedule": "0 9 1 * *"
-        },
-        {
-            "path": "/api/cron/lifecycle-follow-ups",
-            "schedule": "0 11 * * *"
         }
     ]
 }
